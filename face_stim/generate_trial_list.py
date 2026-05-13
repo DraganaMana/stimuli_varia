@@ -7,7 +7,8 @@ Structure:
   - 9 trials per block
     - Face trials: 36 identities per day, each contributing exactly one angry (AC)
         and one fearful (FO) correct-answer trial
-  - Shape trials: same matching logic with the 8 generated shapes
+    - Shape trials: same matching logic with generated shapes, with anti-repetition
+        for consecutive target/foil pairs
 
 Outputs: trial_list.csv in the same directory as this script.
 """
@@ -167,13 +168,38 @@ def build_face_trials(face_pairs: list[tuple[Path, Path]]) -> list[tuple[str, st
 
 
 def build_shape_trials(shapes: list[Path], n_trials: int):
-    """Generate n_trials shape trials, reusing shapes as needed."""
+    """Generate n_trials shape trials, avoiding consecutive repeated target/foil pairs."""
     sides = balanced_sides(n_trials)
     trials = []
+    prev_pair = None
+
     for side in sides:
-        top = random.choice(shapes)
-        wrong = random.choice([s for s in shapes if s != top])
+        top = None
+        wrong = None
+        pair = None
+
+        top_candidates = random.sample(shapes, len(shapes))
+        for candidate_top in top_candidates:
+            wrong_pool = [s for s in shapes if s != candidate_top]
+            random.shuffle(wrong_pool)
+            for candidate_wrong in wrong_pool:
+                candidate_pair = (candidate_top.name, candidate_wrong.name)
+                if candidate_pair != prev_pair:
+                    top = candidate_top
+                    wrong = candidate_wrong
+                    pair = candidate_pair
+                    break
+            if top is not None:
+                break
+
+        if top is None:
+            top = random.choice(shapes)
+            wrong = random.choice([s for s in shapes if s != top])
+            pair = (top.name, wrong.name)
+
         trials.append(make_left_right(top, wrong, side, SHAPES_DIR))
+        prev_pair = pair
+
     return trials
 
 

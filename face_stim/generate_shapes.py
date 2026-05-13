@@ -1,9 +1,10 @@
 """
 Generate shape stimuli for the Hariri face-matching task control condition.
 
-Outputs 8 PNG files (RGBA, transparent background) at 240x200 px:
-    4 circles  (small / medium / large / xlarge)
-    4 ovals    (wide-small / wide-large / tall-small / tall-large)
+Outputs 20 PNG files (RGBA, transparent background) at 240x200 px:
+    8 circles
+    6 wide ovals
+    6 tall ovals
 
 Usage:
     python generate_shapes.py [--output PATH]
@@ -25,14 +26,26 @@ FILL_COLOR = (80, 80, 80, 255)   # dark gray, fully opaque
 
 SHAPES = [
     # (filename_stem,   ellipse_w, ellipse_h)
+    ("circle_xsmall",        46,   46),
     ("circle_small",         60,   60),
+    ("circle_smallplus",     74,   74),
     ("circle_medium",        90,   90),
-    ("circle_large",        120,  120),
-    ("circle_xlarge",       150,  150),
-    ("oval_wide_small",     130,   65),
-    ("oval_wide_large",     170,   85),
-    ("oval_tall_small",      65,  110),
-    ("oval_tall_large",      85,  150),
+    ("circle_mediumplus",   106,  106),
+    ("circle_large",        122,  122),
+    ("circle_xlarge",       138,  138),
+    ("circle_xxlarge",      154,  154),
+    ("oval_wide_xsmall",    102,   52),
+    ("oval_wide_small",     118,   60),
+    ("oval_wide_medium",    136,   70),
+    ("oval_wide_large",     154,   78),
+    ("oval_wide_xlarge",    172,   86),
+    ("oval_wide_xxlarge",   190,   94),
+    ("oval_tall_xsmall",     52,   92),
+    ("oval_tall_small",      60,  108),
+    ("oval_tall_medium",     70,  124),
+    ("oval_tall_large",      78,  140),
+    ("oval_tall_xlarge",     86,  156),
+    ("oval_tall_xxlarge",    94,  172),
 ]
 
 

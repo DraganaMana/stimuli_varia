@@ -43,9 +43,9 @@ Generate them with the included script:
 python generate_shapes.py
 ```
 
-See [generate_shapes.py](generate_shapes.py) for details. The script outputs 8 PNG files with **transparent backgrounds** (RGBA) at 240 × 200 px.
+See [generate_shapes.py](generate_shapes.py) for details. The script outputs 20 PNG files with **transparent backgrounds** (RGBA) at 240 × 200 px.
 
-`generate_trial_list.py` reuses those shape files as needed to build **72 shape trials** across the two runs.
+`generate_trial_list.py` reuses those shape files as needed to build **72 shape trials** across the two runs, and applies an anti-repetition constraint so identical target/foil shape pairs do not occur on consecutive trials.
 
 ---
 
