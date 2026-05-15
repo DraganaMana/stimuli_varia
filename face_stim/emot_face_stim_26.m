@@ -178,9 +178,9 @@ try
     right_textures = cell(nRows, 1);
 
     for i = 1:nRows
-        top_path   = [T.base_path{i} T.top_correct{i}];
-        left_path  = [T.base_path{i} T.bottom_left{i}];
-        right_path = [T.base_path{i} T.bottom_right{i}];
+        top_path   = resolve_img_path(T.base_path{i}, T.top_correct{i}, script_dir);
+        left_path  = resolve_img_path(T.base_path{i}, T.bottom_left{i}, script_dir);
+        right_path = resolve_img_path(T.base_path{i}, T.bottom_right{i}, script_dir);
 
         top_textures{i}   = Screen('MakeTexture', window, imread(top_path));
         left_textures{i}  = Screen('MakeTexture', window, imread(left_path));
@@ -197,19 +197,20 @@ try
 
     %% Timing plan
     numTrials = 9;
-    numBlocks = 8;
+    numBlocks = 4;   % 2 face + 2 shape per run
     totalTrials = numTrials * numBlocks;
 
     display_duration = 4.0;
 
     % Jittered ITIs (s) for face blocks; fixed ITI for shape blocks.
     % 9 values per block, randomised within each face block at runtime.
+    % Face blocks are at positions 1 and 3 within every run.
     isiF = [2 2 6 6 4 4 2 4 6];
     isiS = [2 2 2 2 2 2 2 2 2];
 
     isiL = [];
     for bl = 1:numBlocks
-        if ismember(bl, [1 3 5 7])
+        if ismember(bl, [1 3])
             isiL = [isiL, isiF(randperm(numel(isiF)))]; %#ok<AGROW>
         else
             isiL = [isiL, isiS]; %#ok<AGROW>
@@ -266,7 +267,7 @@ try
 
     %% Main task loop
     for bl = 1:numBlocks
-        is_face_block = ismember(bl, [1 3 5 7]);
+        is_face_block = ismember(bl, [1 3]);
         if is_face_block
             msg = 'Match Faces';
         else
@@ -479,6 +480,18 @@ end
 tbl = tbl(:, exemplar_names);
 end
 
+
+function p = resolve_img_path(base_path, relative_path, script_dir)
+% Build a full image path from base_path + relative_path.
+% If base_path is absolute (starts with a drive letter on Windows, or /
+% on Unix), it is used directly. Otherwise it is resolved relative to
+% script_dir, making trial_list_local.csv work on any machine.
+if ~isempty(regexp(base_path, '^([A-Za-z]:[/\\]|/)', 'once'))
+    p = fullfile(base_path, relative_path);
+else
+    p = fullfile(script_dir, base_path, relative_path);
+end
+end
 
 function empty_col = make_empty_column_like(sample_col, nRows)
 if isnumeric(sample_col)

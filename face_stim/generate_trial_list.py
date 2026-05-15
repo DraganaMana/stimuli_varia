@@ -1,23 +1,38 @@
 """
 Generate trial list CSV for the emotion face-matching task.
 
-Structure:
-  - 1 day, 2 runs
-  - 8 blocks per run: face / shape / face / shape ... (odd blocks = face, even = shape)
-  - 9 trials per block
-    - Face trials: 36 identities per day, each contributing exactly one angry (AC)
-        and one fearful (FO) correct-answer trial
-    - Shape trials: same matching logic with generated shapes, with anti-repetition
-        for consecutive target/foil pairs
+Block layout per run (4 blocks, 9 trials each):
+  Block 1 — face
+  Block 2 — shape
+  Block 3 — face
+  Block 4 — shape
 
-Outputs: trial_list.csv in the same directory as this script.
+Which face type depends on the run:
+  Run 1 → negative face blocks  (angry + fearful: AC, AO, FC, FO)
+  Run 2 → happy face blocks     (HC, HE, HO)
+
+Negative face blocks (run 1 only, 2 blocks × 9 trials = 18 trials):
+  - 4 expressions; 18 is not divisible by 4, so the split is uneven:
+    AC: 5 trials, AO: 5 trials, FC: 4 trials, FO: 4 trials.
+  - Expressions are mixed within each block.
+  - Distractors are always a different-identity image of the same expression.
+
+Happy face blocks (run 2 only, 2 blocks × 9 trials = 18 trials):
+  - 3 expressions, 6 identities each (6 × 3 = 18, evenly divisible).
+  - Each block gets 3 HC + 3 HE + 3 HO (mixed within block).
+
+Shape blocks (both runs, 2 × 2 blocks × 9 trials = 36 trials):
+  - Same matching logic with generated shapes; anti-repetition for
+    consecutive target/foil pairs.
+
+Outputs: trial_list.csv.
+After running this script, run copy_stimuli.py to copy images into the
+repo and produce trial_list_local.csv with portable relative paths.
 """
-#%%
+
 import csv
 import random
 from pathlib import Path
-
-#%%
 
 SEED = 42
 random.seed(SEED)
@@ -30,63 +45,76 @@ RADIATE_ROOT = Path(
 )
 SHAPES_DIR = SCRIPT_DIR / "shapes_output"
 
-N_DAYS = 1
-N_RUNS = 2
-N_BLOCKS_PER_RUN = 8          # 4 face + 4 shape, interleaved
+N_DAYS             = 1
+N_RUNS             = 2
+N_BLOCKS_PER_RUN   = 4   # 2 face + 2 shape
 N_TRIALS_PER_BLOCK = 9
 
-# Block indices (1-based) that are face blocks; even = shape
-FACE_BLOCK_INDICES = {1, 3, 5, 7}
-SHAPE_BLOCK_INDICES = {2, 4, 6, 8}
+FACE_BLOCK_NUMBERS  = {1, 3}   # same positions in every run
+SHAPE_BLOCK_NUMBERS = {2, 4}
 
-FACE_TRIALS_PER_DAY = N_RUNS * len(FACE_BLOCK_INDICES) * N_TRIALS_PER_BLOCK  # 72
-FACE_IDENTITIES_PER_DAY = FACE_TRIALS_PER_DAY // 2  # 36 identities x 2 expressions
-SHAPE_TRIALS_PER_DAY = N_RUNS * len(SHAPE_BLOCK_INDICES) * N_TRIALS_PER_BLOCK  # 72
+NEG_RUN = 1   # run whose face blocks are negative (angry / fearful)
+HAP_RUN = 2   # run whose face blocks are happy
 
-if FACE_TRIALS_PER_DAY % 2 != 0:
-    raise ValueError("FACE_TRIALS_PER_DAY must be even so each identity can contribute AC and FO once.")
+# Expression filename suffixes (no leading underscore)
+NEG_EXPRESSIONS = ("AC", "AO", "FC", "FO")   # angry closed/open, fear closed/open
+HAP_EXPRESSIONS = ("HC", "HE", "HO")         # happy closed, expressive, open
+
+# Per-day trial counts
+NEG_TRIALS_PER_DAY   = len(FACE_BLOCK_NUMBERS) * N_TRIALS_PER_BLOCK   # 18 (run 1)
+HAP_TRIALS_PER_DAY   = len(FACE_BLOCK_NUMBERS) * N_TRIALS_PER_BLOCK   # 18 (run 2)
+SHAPE_TRIALS_PER_DAY = N_RUNS * len(SHAPE_BLOCK_NUMBERS) * N_TRIALS_PER_BLOCK  # 36
+
+# Neg expression trial counts — 18 / 4 = 4 remainder 2, so first two get +1
+_base       = NEG_TRIALS_PER_DAY // len(NEG_EXPRESSIONS)    # 4
+_remainder  = NEG_TRIALS_PER_DAY %  len(NEG_EXPRESSIONS)    # 2
+NEG_EXPR_COUNTS = tuple(
+    _base + (1 if i < _remainder else 0)
+    for i in range(len(NEG_EXPRESSIONS))
+)  # → (5, 5, 4, 4) for (AC, AO, FC, FO)
+
+assert sum(NEG_EXPR_COUNTS) == NEG_TRIALS_PER_DAY
+
+# Happy: evenly divisible → 6 identities per expression
+assert HAP_TRIALS_PER_DAY % len(HAP_EXPRESSIONS) == 0
+HAP_IDENTITIES_PER_EXPR = HAP_TRIALS_PER_DAY // len(HAP_EXPRESSIONS)   # 6
 
 
-def collect_faces(expression_suffix: str) -> list[Path]:
-    """Return all face image paths with the given suffix (e.g. '_AC.bmp')."""
-    files = sorted(RADIATE_ROOT.rglob(f"*{expression_suffix}"))
-    if not files:
-        raise FileNotFoundError(
-            f"No files matching *{expression_suffix} under {RADIATE_ROOT}"
-        )
-    return files
+# ---------------------------------------------------------------------------
+# Data collection
+# ---------------------------------------------------------------------------
 
-
-def identity_key(path: Path, expression_suffixes: tuple[str, ...] = ("_AC", "_FO")) -> str:
-    """Return an identity key shared by AC and FO files for the same person."""
+def identity_key_for(path: Path, expr_suffix: str) -> str:
+    """Strip _{expr_suffix} from the file stem to get a per-person identity key."""
     relative = path.relative_to(RADIATE_ROOT)
     stem = path.stem
+    tag = f"_{expr_suffix}"
+    if not stem.endswith(tag):
+        raise ValueError(f"Expected tag '{tag}' in filename: {path.name}")
+    return str(relative.parent / stem[: -len(tag)])
+
+
+def collect_identities(expression_suffixes: tuple[str, ...]) -> dict[str, dict[str, Path]]:
+    """
+    Scan RADIATE_ROOT for files matching each expression suffix and return
+    only the identities that have an image for every suffix.
+
+    Returns: {identity_key: {suffix: Path}}
+    """
+    by_expr: dict[str, dict[str, Path]] = {}
     for suffix in expression_suffixes:
-        if stem.endswith(suffix):
-            stem = stem[: -len(suffix)]
-            break
-    else:
-        raise ValueError(f"Could not parse expression suffix from filename: {path.name}")
+        files = sorted(RADIATE_ROOT.rglob(f"*_{suffix}.bmp"))
+        if not files:
+            raise FileNotFoundError(
+                f"No *_{suffix}.bmp files found under {RADIATE_ROOT}"
+            )
+        by_expr[suffix] = {identity_key_for(p, suffix): p for p in files}
 
-    return str(relative.parent / stem)
-
-
-def collect_face_pairs() -> list[tuple[Path, Path]]:
-    """Collect identities that have both AC and FO images available."""
-    ac_files = collect_faces("_AC.bmp")
-    fo_files = collect_faces("_FO.bmp")
-
-    ac_by_identity = {identity_key(path): path for path in ac_files}
-    fo_by_identity = {identity_key(path): path for path in fo_files}
-    paired_keys = sorted(set(ac_by_identity) & set(fo_by_identity))
-
-    if len(paired_keys) < FACE_IDENTITIES_PER_DAY:
-        raise ValueError(
-            f"Need at least {FACE_IDENTITIES_PER_DAY} identities with both AC and FO images, "
-            f"but found {len(paired_keys)}."
-        )
-
-    return [(ac_by_identity[key], fo_by_identity[key]) for key in paired_keys]
+    common_keys = sorted(
+        set.intersection(*(set(d.keys()) for d in by_expr.values()))
+    )
+    return {k: {expr: by_expr[expr][k] for expr in expression_suffixes}
+            for k in common_keys}
 
 
 def collect_shapes() -> list[Path]:
@@ -96,8 +124,12 @@ def collect_shapes() -> list[Path]:
     return shapes
 
 
+# ---------------------------------------------------------------------------
+# Trial-building helpers
+# ---------------------------------------------------------------------------
+
 def balanced_sides(n: int) -> list[str]:
-    """Return a shuffled list of n sides with exactly n//2 'left' and ceil(n/2) 'right'."""
+    """Shuffled list of n sides: n//2 'left' and ceil(n/2) 'right'."""
     half = n // 2
     pool = ["left"] * half + ["right"] * (n - half)
     random.shuffle(pool)
@@ -108,9 +140,11 @@ def rel(path: Path, base: Path) -> str:
     return str(path.relative_to(base))
 
 
-def make_left_right(top_path: Path, wrong_path: Path, side: str, base: Path) -> tuple[str, str, str]:
-    """Return (bottom_left, bottom_right, bottom_correct_match) as paths relative to base."""
-    top_rel = rel(top_path, base)
+def make_left_right(
+    top_path: Path, wrong_path: Path, side: str, base: Path
+) -> tuple[str, str, str]:
+    """Return (bottom_left, bottom_right, correct_side) with paths relative to base."""
+    top_rel   = rel(top_path,   base)
     wrong_rel = rel(wrong_path, base)
     if side == "left":
         return top_rel, wrong_rel, "left"
@@ -119,83 +153,128 @@ def make_left_right(top_path: Path, wrong_path: Path, side: str, base: Path) -> 
 
 
 def make_derangement(items: list[Path]) -> list[Path]:
-    """Return a shuffled copy where no item remains in its original position."""
+    """Shuffled copy where no element stays in its original position."""
     while True:
         shuffled = random.sample(items, len(items))
-        if all(original != swapped for original, swapped in zip(items, shuffled)):
+        if all(a != b for a, b in zip(items, shuffled)):
             return shuffled
 
 
 def build_expression_trials(correct_paths: list[Path]) -> list[tuple[str, str, str]]:
-    """Create one trial per correct path with a different-identity distractor of the same expression."""
+    """
+    One trial per path. Distractor = different-identity file of the same
+    expression, chosen via a derangement of the same pool.
+    """
     distractors = make_derangement(correct_paths)
-    sides = balanced_sides(len(correct_paths))
+    sides       = balanced_sides(len(correct_paths))
     return [
-        make_left_right(top_path, wrong_path, side, RADIATE_ROOT)
-        for top_path, wrong_path, side in zip(correct_paths, distractors, sides)
+        make_left_right(top, wrong, side, RADIATE_ROOT)
+        for top, wrong, side in zip(correct_paths, distractors, sides)
     ]
 
 
-def build_face_trials(face_pairs: list[tuple[Path, Path]]) -> list[tuple[str, str, str]]:
-    """Build face trials so each selected identity contributes AC once and FO once as the correct answer."""
-    selected_pairs = random.sample(face_pairs, FACE_IDENTITIES_PER_DAY)
-    random.shuffle(selected_pairs)
+# ---------------------------------------------------------------------------
+# Face trial builders
+# ---------------------------------------------------------------------------
 
-    ac_paths = [ac_path for ac_path, _ in selected_pairs]
-    fo_paths = [fo_path for _, fo_path in selected_pairs]
+def build_neg_face_trials(
+    identities: dict[str, dict[str, Path]],
+) -> list[tuple[str, str, str]]:
+    """
+    Build 18 negative face trials for the 2 neg blocks in run 1.
 
-    ac_trials = build_expression_trials(ac_paths)
-    fo_trials = build_expression_trials(fo_paths)
+    Expression counts (uneven because 18 % 4 != 0):
+      AC: 5  AO: 5  FC: 4  FO: 4  → total 18
 
-    trials = []
-    face_blocks_per_day = N_RUNS * len(FACE_BLOCK_INDICES)
-    expression_blocks = face_blocks_per_day // 2
+    Identities are sampled independently per expression, so the same
+    person may appear in multiple expression trials (consistent with the
+    original design where each identity contributed both AC and FO).
 
-    ac_blocks = [
-        ac_trials[i * N_TRIALS_PER_BLOCK:(i + 1) * N_TRIALS_PER_BLOCK]
-        for i in range(expression_blocks)
-    ]
-    fo_blocks = [
-        fo_trials[i * N_TRIALS_PER_BLOCK:(i + 1) * N_TRIALS_PER_BLOCK]
-        for i in range(expression_blocks)
-    ]
+    Trials are mixed across expressions within each block.
+    """
+    # Shuffle which expressions get the extra trial so no expression is
+    # structurally privileged across participants / runs.
+    expr_count_pairs = list(zip(NEG_EXPRESSIONS, NEG_EXPR_COUNTS))
+    random.shuffle(expr_count_pairs)
 
-    for ac_block, fo_block in zip(ac_blocks, fo_blocks):
-        trials.extend(random.sample(ac_block, len(ac_block)))
-        trials.extend(random.sample(fo_block, len(fo_block)))
+    all_trials: list[tuple[str, str, str]] = []
+    for expr, n in expr_count_pairs:
+        if len(identities) < n:
+            raise ValueError(
+                f"Need at least {n} identities with expression {expr}, "
+                f"found {len(identities)}."
+            )
+        selected = random.sample(sorted(identities.keys()), n)
+        paths    = [identities[k][expr] for k in selected]
+        all_trials.extend(build_expression_trials(paths))
 
-    return trials
+    # Shuffle all 18, then split into 2 blocks of 9
+    random.shuffle(all_trials)
+    return all_trials   # caller slices into blocks of N_TRIALS_PER_BLOCK
 
 
-def build_shape_trials(shapes: list[Path], n_trials: int):
+def build_hap_face_trials(
+    identities: dict[str, dict[str, Path]],
+) -> list[tuple[str, str, str]]:
+    """
+    Build 18 happy face trials for the 2 hap blocks in run 2.
+
+    6 identities × 3 expressions (HC, HE, HO) = 18 trials.
+    Each block gets 3 HC + 3 HE + 3 HO (expressions mixed within block).
+    """
+    n = HAP_IDENTITIES_PER_EXPR   # 6
+    if len(identities) < n:
+        raise ValueError(
+            f"Need at least {n} identities with all hap expressions "
+            f"{HAP_EXPRESSIONS}, found {len(identities)}."
+        )
+
+    expr_trials: dict[str, list[tuple[str, str, str]]] = {}
+    for expr in HAP_EXPRESSIONS:
+        selected          = random.sample(sorted(identities.keys()), n)
+        paths             = [identities[k][expr] for k in selected]
+        trials            = build_expression_trials(paths)  # 6 trials
+        random.shuffle(trials)   # randomise which identities land in block 1 vs block 2
+        expr_trials[expr] = trials
+
+    # Interleave into 2 blocks: 3 per expression per block
+    per_block = n // len(FACE_BLOCK_NUMBERS)   # 6 / 2 = 3
+    all_trials: list[tuple[str, str, str]] = []
+    for b in range(len(FACE_BLOCK_NUMBERS)):   # 2 blocks
+        block_trials: list[tuple[str, str, str]] = []
+        for expr in HAP_EXPRESSIONS:
+            start = b * per_block
+            block_trials.extend(expr_trials[expr][start : start + per_block])
+        random.shuffle(block_trials)
+        all_trials.extend(block_trials)
+
+    return all_trials
+
+
+def build_shape_trials(shapes: list[Path], n_trials: int) -> list[tuple[str, str, str]]:
     """Generate n_trials shape trials, avoiding consecutive repeated target/foil pairs."""
-    sides = balanced_sides(n_trials)
-    trials = []
+    sides     = balanced_sides(n_trials)
+    trials    = []
     prev_pair = None
 
     for side in sides:
-        top = None
-        wrong = None
-        pair = None
+        top = wrong = pair = None
 
-        top_candidates = random.sample(shapes, len(shapes))
-        for candidate_top in top_candidates:
+        for candidate_top in random.sample(shapes, len(shapes)):
             wrong_pool = [s for s in shapes if s != candidate_top]
             random.shuffle(wrong_pool)
             for candidate_wrong in wrong_pool:
                 candidate_pair = (candidate_top.name, candidate_wrong.name)
                 if candidate_pair != prev_pair:
-                    top = candidate_top
-                    wrong = candidate_wrong
-                    pair = candidate_pair
+                    top, wrong, pair = candidate_top, candidate_wrong, candidate_pair
                     break
             if top is not None:
                 break
 
-        if top is None:
-            top = random.choice(shapes)
+        if top is None:   # fallback (practically unreachable)
+            top   = random.choice(shapes)
             wrong = random.choice([s for s in shapes if s != top])
-            pair = (top.name, wrong.name)
+            pair  = (top.name, wrong.name)
 
         trials.append(make_left_right(top, wrong, side, SHAPES_DIR))
         prev_pair = pair
@@ -203,89 +282,122 @@ def build_shape_trials(shapes: list[Path], n_trials: int):
     return trials
 
 
-def main():
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
     print("Collecting face images...")
-    face_pairs = collect_face_pairs()
-    print(f"  Paired identities with AC and FO: {len(face_pairs)}")
+
+    neg_identities = collect_identities(NEG_EXPRESSIONS)
+    print(f"  Identities with all neg expressions {NEG_EXPRESSIONS}: {len(neg_identities)}")
+    print(f"  Neg expression trial counts (AC AO FC FO): {NEG_EXPR_COUNTS}")
+
+    hap_identities = collect_identities(HAP_EXPRESSIONS)
+    print(f"  Identities with all hap expressions {HAP_EXPRESSIONS}: {len(hap_identities)}")
 
     shapes = collect_shapes()
     print(f"  Shapes: {len(shapes)} images")
 
-    # Assemble CSV rows
-    rows = []
-    face_idx_total = 0
-    shape_idx_total = 0
+    rows: list[dict] = []
+    neg_idx_total = hap_idx_total = shape_idx_total = 0
 
     for day in range(1, N_DAYS + 1):
-        face_trials = build_face_trials(face_pairs)
+
+        neg_trials   = build_neg_face_trials(neg_identities)
+        hap_trials   = build_hap_face_trials(hap_identities)
         shape_trials = build_shape_trials(shapes, SHAPE_TRIALS_PER_DAY)
-        face_idx = 0
-        shape_idx = 0
+
+        neg_idx = hap_idx = shape_idx = 0
 
         for run in range(1, N_RUNS + 1):
             for block in range(1, N_BLOCKS_PER_RUN + 1):
-                is_face_block = block in FACE_BLOCK_INDICES
+
+                is_face  = block in FACE_BLOCK_NUMBERS
+
                 for trial in range(1, N_TRIALS_PER_BLOCK + 1):
-                    if is_face_block:
-                        bl, br, match = face_trials[face_idx]
-                        top = bl if match == "left" else br
-                        base_path = str(RADIATE_ROOT) + "\\"
-                        face_idx += 1
-                        face_idx_total += 1
-                    else:
+
+                    if is_face and run == NEG_RUN:
+                        bl, br, match = neg_trials[neg_idx]
+                        top        = bl if match == "left" else br
+                        base_path  = str(RADIATE_ROOT) + "\\"
+                        block_type = "neg_face"
+                        neg_idx       += 1
+                        neg_idx_total += 1
+
+                    elif is_face and run == HAP_RUN:
+                        bl, br, match = hap_trials[hap_idx]
+                        top        = bl if match == "left" else br
+                        base_path  = str(RADIATE_ROOT) + "\\"
+                        block_type = "hap_face"
+                        hap_idx       += 1
+                        hap_idx_total += 1
+
+                    else:  # shape block
                         bl, br, match = shape_trials[shape_idx]
-                        top = bl if match == "left" else br
-                        base_path = str(SHAPES_DIR) + "\\"
-                        shape_idx += 1
+                        top        = bl if match == "left" else br
+                        base_path  = str(SHAPES_DIR) + "\\"
+                        block_type = "shape"
+                        shape_idx       += 1
                         shape_idx_total += 1
 
                     rows.append({
-                        "day": day,
-                        "run": run,
-                        "block": block,
-                        "trial": trial,
-                        "base_path": base_path,
-                        "top_correct": top,
-                        "bottom_left": bl,
-                        "bottom_right": br,
+                        "day":                  day,
+                        "run":                  run,
+                        "block":                block,
+                        "trial":                trial,
+                        "block_type":           block_type,
+                        "base_path":            base_path,
+                        "top_correct":          top,
+                        "bottom_left":          bl,
+                        "bottom_right":         br,
                         "bottom_correct_match": match,
                     })
 
-        day_face_rows = [
-            row for row in rows
-            if row["day"] == day and row["base_path"].startswith(str(RADIATE_ROOT))
-        ]
-        day_face_targets = [row["top_correct"] for row in day_face_rows]
-        day_face_identities = {
-            identity_key(RADIATE_ROOT / relative_path)
-            for relative_path in day_face_targets
-        }
+        # ---- Per-day assertions ----
+        day_rows  = [r for r in rows if r["day"] == day]
+        neg_rows  = [r for r in day_rows if r["block_type"] == "neg_face"]
+        hap_rows  = [r for r in day_rows if r["block_type"] == "hap_face"]
 
-        assert face_idx == FACE_TRIALS_PER_DAY, f"Expected {FACE_TRIALS_PER_DAY} face trials on day {day}"
-        assert shape_idx == SHAPE_TRIALS_PER_DAY, f"Expected {SHAPE_TRIALS_PER_DAY} shape trials on day {day}"
-        assert len(day_face_targets) == len(set(day_face_targets)), "Each face expression must appear once as a correct answer per day"
-        assert len(day_face_identities) == FACE_IDENTITIES_PER_DAY, f"Expected {FACE_IDENTITIES_PER_DAY} face identities on day {day}"
+        neg_targets = [r["top_correct"] for r in neg_rows]
+        hap_targets = [r["top_correct"] for r in hap_rows]
 
-    out_path = SCRIPT_DIR / "trial_list.csv"
+        assert neg_idx  == NEG_TRIALS_PER_DAY,   f"Day {day}: expected {NEG_TRIALS_PER_DAY} neg trials, got {neg_idx}"
+        assert hap_idx  == HAP_TRIALS_PER_DAY,   f"Day {day}: expected {HAP_TRIALS_PER_DAY} hap trials, got {hap_idx}"
+        assert shape_idx == SHAPE_TRIALS_PER_DAY, f"Day {day}: expected {SHAPE_TRIALS_PER_DAY} shape trials, got {shape_idx}"
+
+        assert len(neg_targets) == len(set(neg_targets)), \
+            f"Day {day}: duplicate neg face target — each identity-expression pair must appear at most once"
+        assert len(hap_targets) == len(set(hap_targets)), \
+            f"Day {day}: duplicate hap face target — each identity-expression pair must appear at most once"
+
+    # ---- Write CSV ----
+    out_path   = SCRIPT_DIR / "trial_list.csv"
     fieldnames = [
         "day", "run", "block", "trial",
-        "base_path", "top_correct", "bottom_left", "bottom_right", "bottom_correct_match",
+        "block_type",
+        "base_path", "top_correct", "bottom_left", "bottom_right",
+        "bottom_correct_match",
     ]
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"\nWrote {len(rows)} rows to: {out_path}")
-    print(f"  Face trials: {face_idx_total}  |  Shape trials: {shape_idx_total}")
+    total = neg_idx_total + hap_idx_total + shape_idx_total
+    print(f"\nWrote {total} rows to: {out_path}")
+    print(f"  Neg face trials : {neg_idx_total}  (run {NEG_RUN})")
+    print(f"  Hap face trials : {hap_idx_total}  (run {HAP_RUN})")
+    print(f"  Shape trials    : {shape_idx_total} (both runs)")
 
-    # Sanity checks
-    assert face_idx_total == N_DAYS * FACE_TRIALS_PER_DAY, f"Expected {N_DAYS * FACE_TRIALS_PER_DAY} face trials"
-    assert shape_idx_total == N_DAYS * SHAPE_TRIALS_PER_DAY, f"Expected {N_DAYS * SHAPE_TRIALS_PER_DAY} shape trials"
-    left_count = sum(1 for r in rows if r["bottom_correct_match"] == "left")
-    right_count = len(rows) - left_count
-    print(f"  Left matches: {left_count}  |  Right matches: {right_count}")
-    print("Done.")
+    assert neg_idx_total   == N_DAYS * NEG_TRIALS_PER_DAY
+    assert hap_idx_total   == N_DAYS * HAP_TRIALS_PER_DAY
+    assert shape_idx_total == N_DAYS * SHAPE_TRIALS_PER_DAY
+
+    left_count  = sum(1 for r in rows if r["bottom_correct_match"] == "left")
+    right_count = total - left_count
+    print(f"  Left matches    : {left_count}  |  Right matches: {right_count}")
+    print("\nNext step: run copy_stimuli.py to copy new images and regenerate trial_list_local.csv.")
 
 
 if __name__ == "__main__":
