@@ -27,8 +27,19 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 %   acc  : fraction correct over all task trials
 %   data : struct with saved trial timing and response info
 
+% Set to 1 when testing outside the MRI (skips trigger wait, uses all keyboards).
+% Set to 0 for real scanning sessions (waits for the '5' pulse from the MRI).
+outside_of_mri_test = 1;
+
 if nargin < 3
     opts = struct();
+end
+
+% Apply the test flag — forces laptop mode unless opts explicitly says otherwise.
+if outside_of_mri_test
+    if ~isfield(opts, 'mode');          opts.mode           = 'laptop'; end
+    if ~isfield(opts, 'waitForTrigger'); opts.waitForTrigger = false;   end
+    if ~isfield(opts, 'keyboardName');   opts.keyboardName   = '';      end
 end
 
 script_dir = fileparts(mfilename('fullpath'));

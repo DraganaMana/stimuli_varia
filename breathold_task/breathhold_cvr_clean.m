@@ -46,6 +46,10 @@ close all;
 clear;
 Screen('Preference', 'SkipSyncTests', 1);
 
+% Set to 1 when testing outside the MRI (skips waiting for the scanner trigger).
+% Set to 0 for real scanning sessions (waits for the '+' pulse from the MRI).
+outside_of_mri_test = 1;
+
 % ---- Keyboard / trigger setup -----------------------------------------------
 % Retrieve all keyboard device indices and their product names.
 [keyboardIndices, productNames] = GetKeyboardIndices;
@@ -173,8 +177,12 @@ vbl = Screen('Flip', window);
 % Elevate process priority to minimise timing jitter during stimulus delivery.
 Priority(MaxPriority(window));
 
-% Halt here until the MRI scanner sends its trigger pulse.
-KbTriggerWait(triggerKey, KB);
+% Wait for the MRI scanner trigger, or skip if testing outside the scanner.
+if outside_of_mri_test
+    fprintf('TEST MODE: skipping trigger wait — starting immediately.\n');
+else
+    KbTriggerWait(triggerKey, KB);
+end
 
 % ---- Main stimulus loop -----------------------------------------------------
 for iblock = 1:nblock
