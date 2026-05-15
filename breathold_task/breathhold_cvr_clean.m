@@ -38,7 +38,7 @@
 %     script to absorb any PsychToolbox overhead.
 %
 % ORIGINAL AUTHOR: Baarbod Ashenagar
-% ADAPTED BY     : [your name]
+% ADAPTED BY     : Dragana Manasova
 % =============================================================================
 
 % ---- Housekeeping -----------------------------------------------------------
@@ -50,13 +50,21 @@ Screen('Preference', 'SkipSyncTests', 1);
 % Retrieve all keyboard device indices and their product names.
 [keyboardIndices, productNames] = GetKeyboardIndices;
 
-% Select the MRI button box by name. Change this string if your system uses
-% a different device name (check with GetKeyboardIndices on your machine).
-KB = keyboardIndices(strcmp(productNames, 'Current Designs, Inc. 932'));
-
 KbName('UnifyKeyNames');
 
+% Try to find the MRI button box. If not present (e.g. laptop testing),
+% fall back to KB = -1 which listens to all connected keyboards.
+match = find(strcmp(productNames, 'Current Designs, Inc. 932'), 1);
+if ~isempty(match)
+    KB = keyboardIndices(match);
+    fprintf('Keyboard: MRI button box found (index %d).\n', KB);
+else
+    KB = -1;
+    fprintf('Keyboard: MRI button box not found — listening to all keyboards.\n');
+end
+
 % Scanner sends a '+' character as the trigger pulse at each volume onset.
+% On a laptop keyboard, press the key that produces ''+''.
 triggerKey = KbName('+');
 
 % ---- Condition durations (seconds) ------------------------------------------
