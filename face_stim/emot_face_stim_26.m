@@ -31,8 +31,9 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 % Set to 0 for real scanning sessions (waits for the '5' pulse from the MRI).
 outside_of_mri_test = 1;
 
-if nargin < 3
-    opts = struct();
+if nargin < 1; day  = 1; end
+if nargin < 2; run  = 1; end
+if nargin < 3; opts = struct(); end
 end
 
 % Apply the test flag — forces laptop mode unless opts explicitly says otherwise.
@@ -45,7 +46,7 @@ end
 script_dir = fileparts(mfilename('fullpath'));
 
 if ~isfield(opts, 'csv_path')
-    opts.csv_path = fullfile(script_dir, 'trial_list.csv');
+    opts.csv_path = fullfile(script_dir, 'trial_list_local.csv');
 end
 if ~isfield(opts, 'data_path')
     opts.data_path = fullfile(script_dir, 'data');
@@ -494,9 +495,13 @@ end
 
 function p = resolve_img_path(base_path, relative_path, script_dir)
 % Build a full image path from base_path + relative_path.
-% If base_path is absolute (starts with a drive letter on Windows, or /
-% on Unix), it is used directly. Otherwise it is resolved relative to
-% script_dir, making trial_list_local.csv work on any machine.
+% Normalises backslashes to the OS file separator so CSV files generated
+% on Windows work correctly on Linux/Mac as well.
+% If base_path is absolute (drive letter on Windows, or / on Unix) it is
+% used directly; otherwise it is resolved relative to script_dir so that
+% trial_list_local.csv works on any machine.
+base_path     = strrep(base_path,     '\', filesep);
+relative_path = strrep(relative_path, '\', filesep);
 if ~isempty(regexp(base_path, '^([A-Za-z]:[/\\]|/)', 'once'))
     p = fullfile(base_path, relative_path);
 else

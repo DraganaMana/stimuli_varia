@@ -137,7 +137,7 @@ def balanced_sides(n: int) -> list[str]:
 
 
 def rel(path: Path, base: Path) -> str:
-    return str(path.relative_to(base))
+    return path.relative_to(base).as_posix()  # forward slashes on all platforms
 
 
 def make_left_right(
