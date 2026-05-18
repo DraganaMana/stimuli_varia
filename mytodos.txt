@@ -1,0 +1,4 @@
+- transfer the new shapes and new .m script and the trialList csvs to the other laptop
+- run it while responding to all trials
+- check the .csv output in data
+- send it to claude to analyze it - it seems wrong now

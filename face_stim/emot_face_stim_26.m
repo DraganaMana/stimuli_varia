@@ -31,9 +31,14 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 % Set to 0 for real scanning sessions (waits for the '5' pulse from the MRI).
 outside_of_mri_test = 1;
 
-if nargin < 1; day  = 1; end
-if nargin < 2; run  = 1; end
-if nargin < 3; opts = struct(); end
+if nargin < 1
+    day = 1;
+end
+if nargin < 2
+    run = 1;
+end
+if nargin < 3
+    opts = struct();
 end
 
 % Apply the test flag — forces laptop mode unless opts explicitly says otherwise.
@@ -52,7 +57,7 @@ if ~isfield(opts, 'data_path')
     opts.data_path = fullfile(script_dir, 'data');
 end
 if ~isfield(opts, 'skipSyncTests')
-    opts.skipSyncTests = 1;
+    opts.skipSyncTests = 2;   % 2 = skip sync test entirely (no flash error screen)
 end
 if ~isfield(opts, 'mode')
     opts.mode = 'laptop';
@@ -162,50 +167,73 @@ try
     else
         whichScreen = opts.whichScreen;
     end
-    [window, windowRect] = Screen(whichScreen, 'OpenWindow');
+
+    % White background so RADIATE face images (white bg) blend seamlessly,
+    % and transparent shape PNGs render with white rather than black.
+    white = WhiteIndex(whichScreen);   % 255 on 8-bit display
+    black = BlackIndex(whichScreen);   % 0
+
+    [window, windowRect] = Screen(whichScreen, 'OpenWindow', white);
+
+    % Alpha blending lets transparent shape PNG areas show the white bg.
+    Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
+
+    % Large text — legible at MRI viewing distance.
+    Screen('TextSize', window, 160);
+
+    % Flip the loading screen BEFORE GetFlipInterval so the window is never
+    % blank during the measurement (that blank was the mysterious flash).
+    DrawFormattedText(window, 'Loading experiment,\nplease be patient...', 'center', 'center', black);
+    Screen('Flip', window);
 
     topPriorityLevel = MaxPriority(window);
     Priority(topPriorityLevel);
     ifi = Screen('GetFlipInterval', window);
-
-    owhite = WhiteIndex(window);
-    maxlum = 0.9;
-    minlum = 0;
-    white = owhite * maxlum;
-    black = BlackIndex(window) + owhite * minlum;
-    Screen(window, 'FillRect', white);
 
     dual = get(0, 'MonitorPositions');
     resolution = [0, 0, dual(1, 3), dual(1, 4)];
     data.screenX = resolution(3);
     data.screenY = resolution(4);
 
-    DrawFormattedText(window, 'Loading experiment, please be patient', 'center', 'center', black);
-    Screen('Flip', window);
-
-    %% Preload image textures
+    %% Preload image textures and compute per-image destination rects
     nRows = height(T);
     top_textures   = cell(nRows, 1);
     left_textures  = cell(nRows, 1);
     right_textures = cell(nRows, 1);
+    top_dstRects   = zeros(4, nRows);
+    left_dstRects  = zeros(4, nRows);
+    right_dstRects = zeros(4, nRows);
+
+    % Each image is scaled to fit within max_w x max_h preserving aspect ratio.
+    % Transparent PNG backgrounds (shapes) are handled via load_rgba below.
+    max_w  = 340;   % max display width (px)
+    max_h  = 380;   % max display height (px)
+    Nshift = 240;   % vertical distance from screen centre to each image centre
+    Hshift = 270;   % horizontal distance from screen centre to bottom image centres
+
+    cx_top   = windowRect(3) / 2;
+    cy_top   = windowRect(4) / 2 - Nshift;
+    cx_left  = windowRect(3) / 2 - Hshift;
+    cy_bot   = windowRect(4) / 2 + Nshift;
+    cx_right = windowRect(3) / 2 + Hshift;
 
     for i = 1:nRows
         top_path   = resolve_img_path(T.base_path{i}, T.top_correct{i}, script_dir);
         left_path  = resolve_img_path(T.base_path{i}, T.bottom_left{i}, script_dir);
         right_path = resolve_img_path(T.base_path{i}, T.bottom_right{i}, script_dir);
 
-        top_textures{i}   = Screen('MakeTexture', window, imread(top_path));
-        left_textures{i}  = Screen('MakeTexture', window, imread(left_path));
-        right_textures{i} = Screen('MakeTexture', window, imread(right_path));
-    end
+        top_img   = load_rgba(top_path);
+        left_img  = load_rgba(left_path);
+        right_img = load_rgba(right_path);
 
-    %% Stimulus positions
-    baseRect = [0 0 240 200];
-    Nshift   = 120;
-    dstRects = nan(4, 3);
-    dstRects(:, 1) = CenterRectOnPointd(baseRect, windowRect(3)/2,                      (windowRect(4)/2) - Nshift);
-    dstRects(:, 2) = CenterRectOnPointd(baseRect, (windowRect(3)/2) - (Nshift + 50),   (windowRect(4)/2) + Nshift);
-    dstRects(:, 3) = CenterRectOnPointd(baseRect, (windowRect(3)/2) + (Nshift + 50),   (windowRect(4)/2) + Nshift);
+        top_textures{i}   = Screen('MakeTexture', window, top_img);
+        left_textures{i}  = Screen('MakeTexture', window, left_img);
+        right_textures{i} = Screen('MakeTexture', window, right_img);
+
+        top_dstRects(:, i)   = fit_rect(size(top_img,   2), size(top_img,   1), max_w, max_h, cx_top,   cy_top);
+        left_dstRects(:, i)  = fit_rect(size(left_img,  2), size(left_img,  1), max_w, max_h, cx_left,  cy_bot);
+        right_dstRects(:, i) = fit_rect(size(right_img, 2), size(right_img, 1), max_w, max_h, cx_right, cy_bot);
+    end
 
     %% Timing plan
     numTrials = 9;
@@ -233,9 +261,12 @@ try
     cueFrames      = ceil(3 / ifi);
     trialdurFrames = ceil(display_duration / ifi);
 
+    %% Instructions
+    show_instructions(window, char(mode), opts.responseKeys, black, white, KB);
+
     %% Task start
     if opts.waitForTrigger
-        DrawFormattedText(window, 'Get Ready! Waiting for trigger...', 'center', 'center', black);
+        DrawFormattedText(window, 'Get Ready!\n\nWaiting for\nscanner trigger...', 'center', 'center', black);
         Screen('Flip', window);
 
         KbQueueCreate(KB, triggerlist);
@@ -250,7 +281,7 @@ try
         ts = firstpress(trigger);
         KbQueueRelease(KB);
     else
-        DrawFormattedText(window, 'Get Ready! Press any key to start', 'center', 'center', black);
+        DrawFormattedText(window, 'Get Ready!\n\nPress any key\nto start.', 'center', 'center', black);
         Screen('Flip', window);
         KbStrokeWait(KB);
         ts = GetSecs;
@@ -276,6 +307,7 @@ try
     keyval    = zeros(1, 1000);
     key_idx   = 1;
     trialcounter = 0;
+    consecutive_no_response = 0;   % alertness monitor (MRI-only)
 
     %% Main task loop
     for bl = 1:numBlocks
@@ -298,6 +330,7 @@ try
             % 3-second block cue shown once at block start
             if tr == 1
                 for frame = 1:(cueFrames - 1)
+                    Screen('FillRect', window, white);
                     DrawFormattedText(window, msg, 'center', 'center', black);
                     [ts, ~] = Screen(window, 'Flip', ts + ifi * waitframes - ifi * 0.5);
 
@@ -313,9 +346,10 @@ try
 
             % Stimulus display period
             for frame = 1:(trialdurFrames - 1)
-                Screen('DrawTexture', window, top_textures{trialcounter},   [], dstRects(:, 1));
-                Screen('DrawTexture', window, left_textures{trialcounter},  [], dstRects(:, 2));
-                Screen('DrawTexture', window, right_textures{trialcounter}, [], dstRects(:, 3));
+                Screen('FillRect', window, white);
+                Screen('DrawTexture', window, top_textures{trialcounter},   [], top_dstRects(:,   trialcounter));
+                Screen('DrawTexture', window, left_textures{trialcounter},  [], left_dstRects(:,  trialcounter));
+                Screen('DrawTexture', window, right_textures{trialcounter}, [], right_dstRects(:, trialcounter));
                 DrawFormattedText(window, '+', 'center', 'center', black);
                 [ts, ~] = Screen(window, 'Flip', ts + ifi * waitframes - ifi * 0.5);
 
@@ -350,6 +384,7 @@ try
 
             % ITI fixation period
             for frame = 1:(isiTimeFrames(trialcounter) - 1)
+                Screen('FillRect', window, white);
                 DrawFormattedText(window, '+', 'center', 'center', black);
                 [ts, ~] = Screen('Flip', window, ts + (waitframes - 0.5) * ifi);
 
@@ -365,6 +400,25 @@ try
                         resptimes(key_idx) = firstpress(keys(j));
                         key_idx = key_idx + 1;
                     end
+                end
+            end
+
+            % MRI alertness check: warn after 2 consecutive trials with no response.
+            if ~outside_of_mri_test
+                if respsec(trialcounter) == 0
+                    consecutive_no_response = consecutive_no_response + 1;
+                else
+                    consecutive_no_response = 0;
+                end
+                if consecutive_no_response >= 2
+                    Screen('FillRect', window, white);
+                    DrawFormattedText(window, ...
+                        'Please stay focused!\n\nRemember to press a button\nfor each image pair.\n\nPress any button\nto continue.', ...
+                        'center', 'center', black);
+                    Screen('Flip', window);
+                    KbStrokeWait(KB);
+                    KbQueueFlush(KB);   % discard the dismissal key press
+                    consecutive_no_response = 0;
                 end
             end
         end
@@ -451,20 +505,20 @@ trial_table.source_csv_path = repmat({source_csv_path}, height(T), 1);
 block_table = table(repmat({'block'}, numel(blockonset), 1), repmat(day, numel(blockonset), 1), repmat(run, numel(blockonset), 1), ...
     nan(numel(blockonset), 1), (1:numel(blockonset))', nan(numel(blockonset), 1), nan(numel(blockonset), 1), ...
     blockonset(:), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), ...
-    nan(numel(blockonset), 1), nan(numel(blockonset), 1), repmat(screenX, numel(blockonset), 1), repmat(screenY, numel(blockonset), 1), repmat({source_csv_path}, numel(blockonset), 1), ...
+    nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), repmat(screenX, numel(blockonset), 1), repmat(screenY, numel(blockonset), 1), repmat({source_csv_path}, numel(blockonset), 1), ...
     'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
 
 frame_table = table(repmat({'frame'}, framecounter, 1), repmat(day, framecounter, 1), repmat(run, framecounter, 1), ...
     nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), ...
     nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), ...
-    (1:framecounter)', allt(1:framecounter), frametype(1:framecounter), nan(framecounter, 1), nan(framecounter, 1), ...
+    nan(framecounter, 1), (1:framecounter)', allt(1:framecounter), frametype(1:framecounter), nan(framecounter, 1), nan(framecounter, 1), ...
     nan(framecounter, 1), nan(framecounter, 1), repmat(screenX, framecounter, 1), repmat(screenY, framecounter, 1), repmat({source_csv_path}, framecounter, 1), ...
     'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
 
 keypress_table = table(repmat({'keypress'}, nKeypresses, 1), repmat(day, nKeypresses, 1), repmat(run, nKeypresses, 1), ...
     nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), ...
     nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), ...
-    nan(nKeypresses, 1), resptimes(1:nKeypresses)', nan(nKeypresses, 1), (1:nKeypresses)', keyval(1:nKeypresses)', ...
+    nan(nKeypresses, 1), nan(nKeypresses, 1), resptimes(1:nKeypresses)', nan(nKeypresses, 1), (1:nKeypresses)', keyval(1:nKeypresses)', ...
     nan(nKeypresses, 1), nan(nKeypresses, 1), repmat(screenX, nKeypresses, 1), repmat(screenY, nKeypresses, 1), repmat({source_csv_path}, nKeypresses, 1), ...
     'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
 
@@ -524,6 +578,78 @@ else
     error('Unsupported table column class for CSV export: %s', class(sample_col));
 end
 end
+function show_instructions(window, mode, responseKeys, black, white, KB)
+% Display task instructions across two screens (80 pt text), then restore
+% the main task text size (160 pt).
+left_key  = responseKeys{1}(1);   % '1!' -> '1',  '2@' -> '2'
+right_key = responseKeys{2}(1);
+
+if strcmp(mode, 'mri')
+    left_label  = 'INDEX finger';
+    right_label = 'MIDDLE finger';
+    continue_msg = 'Press any button to continue.';
+    ready_msg   = 'Press any button when ready.';
+else
+    left_label  = sprintf('key  %s', left_key);
+    right_label = sprintf('key  %s', right_key);
+    continue_msg = 'Press any key to continue.';
+    ready_msg   = 'Press any key when ready.';
+end
+
+Screen('TextSize', window, 80);
+
+% --- Screen 1: task description ---
+instr1 = sprintf([...
+    'Image Matching Task\n\n\n'...
+    'On each trial you will see three images:\n'...
+    'one at the TOP  and  two at the BOTTOM.\n\n'...
+    'Your task:\n'...
+    'find which BOTTOM image matches the TOP image.\n\n'...
+    '%s'], continue_msg);
+
+Screen('FillRect', window, white);
+DrawFormattedText(window, instr1, 'center', 'center', black, 45, [], [], 1.4);
+Screen('Flip', window);
+KbStrokeWait(KB);
+
+% --- Screen 2: response mapping ---
+instr2 = sprintf([...
+    'How to respond:\n\n\n'...
+    'LEFT image matches   -->   press %s\n\n'...
+    'RIGHT image matches  -->   press %s\n\n\n'...
+    'Respond as QUICKLY and ACCURATELY\n'...
+    'as possible.\n\n\n'...
+    '%s'], left_label, right_label, ready_msg);
+
+Screen('FillRect', window, white);
+DrawFormattedText(window, instr2, 'center', 'center', black, 45, [], [], 1.4);
+Screen('Flip', window);
+KbStrokeWait(KB);
+
+Screen('TextSize', window, 160);  % restore main task text size
+end
+
+function img = load_rgba(fpath)
+% Read an image file. If it is a PNG with a separate alpha channel (e.g.
+% transparent shapes), append alpha as channel 4 so PsychToolbox renders
+% transparent areas as the window background rather than black.
+[rgb, ~, alpha] = imread(fpath);
+if isempty(alpha)
+    img = rgb;
+else
+    img = cat(3, rgb, alpha);
+end
+end
+
+function dst = fit_rect(img_w, img_h, max_w, max_h, cx, cy)
+% Return [left top right bottom] that places an img_w x img_h image
+% centred at (cx, cy), scaled to fill max_w x max_h preserving aspect ratio.
+scale = min(max_w / img_w, max_h / img_h);
+hw = img_w * scale / 2;
+hh = img_h * scale / 2;
+dst = [cx - hw, cy - hh, cx + hw, cy + hh];
+end
+
 function write_error_csv(err_base, day, run, acc, source_csv_path, ME)
 stack_locations = cell(numel(ME.stack), 1);
 for idx = 1:numel(ME.stack)
