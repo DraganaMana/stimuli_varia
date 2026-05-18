@@ -90,7 +90,33 @@ This gives stimulus onsets in seconds from the first TR — the standard input f
 
 **MRI mode** (`outside_of_mri_test = 0`): the script waits for the `+` trigger pulse via KbQueue, then immediately flips the first block cue. `trigger_timestamp` is the timestamp of that flip — within one frame (~8–16 ms) of the actual scanner trigger.
 
-**Laptop/test mode** (`outside_of_mri_test = 1`): the script starts on a keypress. `trigger_timestamp` is still the first flip timestamp but has no scanner meaning.
+**Laptop/test mode** (`outside_of_mri_test = 1`): the script shows a "Press any key to start" screen and calls `GetSecs` immediately after the keypress. `trigger_timestamp` is that timestamp — the moment the experimenter started the task. No scanner trigger is involved and the value has no scanner meaning, but it still serves as a consistent t=0 for checking trial durations and ITI lengths within a session.
+
+### Dummy volumes and the trigger
+
+Many fMRI protocols acquire a few "dummy" volumes at the start (e.g. 5 × TR) to allow magnetisation to reach steady state. These are discarded before analysis. **The key question is when the scanner sends the `+` trigger relative to the dummies.**
+
+**Case A — trigger is sent after dummies (at the first kept volume)**
+
+`stimonset_rel = stimonset - trigger_timestamp` gives onset times directly relative to the first kept volume. No further adjustment needed.
+
+**Case B — trigger is sent at the first dummy volume (most common)**
+
+`stimonset_rel = stimonset - trigger_timestamp` gives onset times from the first dummy TR. When building a GLM against the trimmed (kept) timeseries, subtract the dummy duration:
+
+```python
+TR        = 2.0   # seconds — confirm with your scanning protocol
+n_dummies = 5     # confirm with your scanning protocol
+
+df['stimonset_s']   = df['stimonset']   - df['trigger_timestamp'] - n_dummies * TR
+df['block_onset_s'] = df['block_onset'] - df['trigger_timestamp'] - n_dummies * TR
+```
+
+Now t = 0 is the first kept volume, matching the trimmed 4D image.
+
+**The MATLAB task script does not need to change** — it faithfully records when the `+` arrived. The dummy-volume offset is a property of the scanning protocol, applied at analysis time.
+
+> **Action:** confirm with your MRI physicist or scanning protocol whether the trigger is sent before or after dummy volumes, and note `n_dummies` and `TR` for your study.
 
 ### Do we need to save individual TR triggers?
 
@@ -144,3 +170,4 @@ blocks['onset_s'] = blocks['block_onset'] - df['trigger_timestamp'].iloc[0]
 | `responsecorr == NaN` when `respsec == 0` | Distinguishes "absent response" from "wrong response" (0). Exclude NaN rows or treat as incorrect depending on convention. |
 | `key_code` is device-dependent | Values 11/12 are specific to the Current Designs 932 MRI button box. Laptop testing produces different codes based on `opts.responseKeys`. |
 | `accuracy` is run-level mean | It is the same value on every row. It counts trials with no response as incorrect (denominator = all 36 trials). |
+| `respsec < 0` means carry-over keypress | A key pressed during the preceding ITI was picked up at the start of the next stimulus window. `respsec > 0` correctly excludes these along with genuine misses (`respsec == 0`). |
