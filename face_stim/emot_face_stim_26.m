@@ -446,10 +446,17 @@ catch ME
     catch
     end
 
+    fprintf('\n!!! TASK ERROR: %s\n', ME.message);
+    for si = 1:numel(ME.stack)
+        fprintf('    at %s (line %d)\n', ME.stack(si).name, ME.stack(si).line);
+    end
+
     try
         err_base = fullfile(opts.data_path, sprintf('ERROREDOUT_EmotMatch_day%d_run%d_%s', day, run, datestr(now, 'yyyy-mm-dd_HH-MM-SS')));
         write_error_csv(err_base, day, run, acc, opts.csv_path, ME);
-    catch
+        fprintf('Error log written to: %s\n', [err_base '.csv']);
+    catch err2
+        fprintf('Could not write error log: %s\n', err2.message);
     end
 
     rethrow(ME);
@@ -497,6 +504,7 @@ behavioral_tbl.source_csv_path    = repmat({source_csv_path}, n, 1);
 
 files.behavioral_file = [output_base '_behavioral.csv'];
 writetable(behavioral_tbl, files.behavioral_file);
+fprintf('Saved behavioral CSV: %s\n', files.behavioral_file);
 
 % Frame log — one row per screen flip, minimal columns
 frame_tbl = table( ...
@@ -511,6 +519,7 @@ frame_tbl = table( ...
 
 files.frames_file = [output_base '_frames.csv'];
 writetable(frame_tbl, files.frames_file);
+fprintf('Saved frames CSV:     %s\n', files.frames_file);
 end
 
 
