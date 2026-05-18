@@ -262,7 +262,7 @@ try
     trialdurFrames = ceil(display_duration / ifi);
 
     %% Instructions
-    show_instructions(window, char(mode), opts.responseKeys, black, white, KB);
+    show_instructions(window, windowRect, char(mode), opts.responseKeys, black, white, KB);
 
     %% Task start
     if opts.waitForTrigger
@@ -303,9 +303,7 @@ try
     blockonset   = zeros(1, numBlocks);
     stimonset    = zeros(1, totalTrials);
 
-    resptimes = zeros(1, 1000);
-    keyval    = zeros(1, 1000);
-    key_idx   = 1;
+    trialkey     = zeros(1, totalTrials);  % key code pressed per trial (0 = no response)
     trialcounter = 0;
     consecutive_no_response = 0;   % alertness monitor (MRI-only)
 
@@ -365,19 +363,15 @@ try
                 if pressed
                     keys = find(firstpress);
                     for j = 1:numel(keys)
-                        keyval(key_idx) = keys(j);
-
                         if keyvalcorr == keys(j)
                             responsecorr(trialcounter) = 1;
                         else
                             responsecorr(trialcounter) = 0;
                         end
-
                         if respsec(trialcounter) == 0
-                            resptimes(key_idx)       = firstpress(keys(j));
-                            respsec(trialcounter)    = firstpress(keys(j)) - stimonset(trialcounter);
+                            respsec(trialcounter)  = firstpress(keys(j)) - stimonset(trialcounter);
+                            trialkey(trialcounter) = keys(j);
                         end
-                        key_idx = key_idx + 1;
                     end
                 end
             end
@@ -391,16 +385,6 @@ try
                 framecounter = framecounter + 1;
                 allt(framecounter)      = ts;
                 frametype(framecounter) = 2;
-
-                [pressed, firstpress] = KbQueueCheck(KB);
-                if pressed
-                    keys = find(firstpress);
-                    for j = 1:numel(keys)
-                        keyval(key_idx)    = keys(j);
-                        resptimes(key_idx) = firstpress(keys(j));
-                        key_idx = key_idx + 1;
-                    end
-                end
             end
 
             % MRI alertness check: warn after 2 consecutive trials with no response.
@@ -439,7 +423,7 @@ try
     data.keyboardName = opts.keyboardName;
     data.triggerKey  = opts.triggerKey;
     data.responseKeys = opts.responseKeys;
-    data.output_file = write_run_csv(output_base, T, day, run, acc, stimonset, respsec, responsecorr, isiL, blockonset, allt, frametype, framecounter, keyval, resptimes, key_idx - 1, data.screenX, data.screenY, opts.csv_path);
+    data.output_files = write_run_csv(output_base, T, day, run, acc, stimonset, respsec, responsecorr, trialkey, isiL, blockonset, allt, frametype, framecounter, data.screenX, data.screenY, opts.csv_path);
 
     %% Cleanup
     ShowCursor;
@@ -472,78 +456,78 @@ catch ME
 end
 end
 
-function output_file = write_run_csv(output_base, T, day, run, acc, stimonset, respsec, responsecorr, isiL, blockonset, allt, frametype, framecounter, keyval, resptimes, nKeypresses, screenX, screenY, source_csv_path)
-trial_index = (1:height(T))';
-block_number = ceil(trial_index / 9);
+function files = write_run_csv(output_base, T, day, run, acc, stimonset, respsec, responsecorr, trialkey, isiL, blockonset, allt, frametype, framecounter, screenX, screenY, source_csv_path)
+
+n = height(T);
+trial_index    = (1:n)';
+block_number   = ceil(trial_index / 9);
 trial_in_block = mod(trial_index - 1, 9) + 1;
-is_face_block = ismember(block_number, [1 3 5 7]);
+is_face_block  = ismember(block_number, [1 3 5 7]);
 
-trial_table = T;
-trial_table.record_type = repmat({'trial'}, height(T), 1);
-trial_table.day = repmat(day, height(T), 1);
-trial_table.run = repmat(run, height(T), 1);
-trial_table.trial_index = trial_index;
-trial_table.block_number = block_number;
-trial_table.trial_in_block = trial_in_block;
-trial_table.is_face_block = is_face_block;
-trial_table.stimonset = stimonset(:);
-trial_table.respsec = respsec(:);
-trial_table.responsecorr = responsecorr(:);
-trial_table.isi_seconds = isiL(:);
-trial_table.block_onset = blockonset(block_number(:))';
-trial_table.frame_index = nan(height(T), 1);
-trial_table.timestamp = nan(height(T), 1);
-trial_table.frame_type = nan(height(T), 1);
-trial_table.keypress_index = nan(height(T), 1);
-trial_table.key_code = nan(height(T), 1);
-trial_table.accuracy = nan(height(T), 1);
-trial_table.trigger_timestamp = nan(height(T), 1);
-trial_table.screenX = repmat(screenX, height(T), 1);
-trial_table.screenY = repmat(screenY, height(T), 1);
-trial_table.source_csv_path = repmat({source_csv_path}, height(T), 1);
+trigger_ts = allt(1);
 
-block_table = table(repmat({'block'}, numel(blockonset), 1), repmat(day, numel(blockonset), 1), repmat(run, numel(blockonset), 1), ...
-    nan(numel(blockonset), 1), (1:numel(blockonset))', nan(numel(blockonset), 1), nan(numel(blockonset), 1), ...
-    blockonset(:), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), ...
-    nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), nan(numel(blockonset), 1), repmat(screenX, numel(blockonset), 1), repmat(screenY, numel(blockonset), 1), repmat({source_csv_path}, numel(blockonset), 1), ...
-    'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
+% Per-trial keypress: NaN when no response was recorded
+has_resp       = respsec(:) > 0;
+key_code_col   = double(trialkey(:));
+key_code_col(~has_resp) = NaN;
+keypress_ts_col = NaN(n, 1);
+keypress_ts_col(has_resp) = stimonset(has_resp)' + respsec(has_resp)';
 
-frame_table = table(repmat({'frame'}, framecounter, 1), repmat(day, framecounter, 1), repmat(run, framecounter, 1), ...
-    nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), ...
-    nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), nan(framecounter, 1), ...
-    nan(framecounter, 1), (1:framecounter)', allt(1:framecounter), frametype(1:framecounter), nan(framecounter, 1), nan(framecounter, 1), ...
-    nan(framecounter, 1), nan(framecounter, 1), repmat(screenX, framecounter, 1), repmat(screenY, framecounter, 1), repmat({source_csv_path}, framecounter, 1), ...
-    'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
+% responsecorr: NaN when no response (distinguishes "wrong" from "absent")
+rc_col = double(responsecorr(:));
+rc_col(~has_resp) = NaN;
 
-keypress_table = table(repmat({'keypress'}, nKeypresses, 1), repmat(day, nKeypresses, 1), repmat(run, nKeypresses, 1), ...
-    nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), ...
-    nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), nan(nKeypresses, 1), ...
-    nan(nKeypresses, 1), nan(nKeypresses, 1), resptimes(1:nKeypresses)', nan(nKeypresses, 1), (1:nKeypresses)', keyval(1:nKeypresses)', ...
-    nan(nKeypresses, 1), nan(nKeypresses, 1), repmat(screenX, nKeypresses, 1), repmat(screenY, nKeypresses, 1), repmat({source_csv_path}, nKeypresses, 1), ...
-    'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
+behavioral_tbl = table( ...
+    repmat(day, n, 1), ...
+    repmat(run, n, 1), ...
+    T.block, ...
+    T.trial, ...
+    T.block_type, ...
+    T.base_path, ...
+    T.top_correct, ...
+    T.bottom_left, ...
+    T.bottom_right, ...
+    T.bottom_correct_match, ...
+    trial_index, ...
+    block_number, ...
+    trial_in_block, ...
+    is_face_block, ...
+    blockonset(block_number(:))', ...
+    stimonset(:), ...
+    respsec(:), ...
+    rc_col, ...
+    key_code_col, ...
+    keypress_ts_col, ...
+    isiL(:), ...
+    repmat(trigger_ts, n, 1), ...
+    repmat(acc, n, 1), ...
+    repmat(screenX, n, 1), ...
+    repmat(screenY, n, 1), ...
+    repmat({source_csv_path}, n, 1), ...
+    'VariableNames', { ...
+        'day', 'run', 'block', 'trial', 'block_type', 'base_path', ...
+        'top_correct', 'bottom_left', 'bottom_right', 'bottom_correct_match', ...
+        'trial_index', 'block_number', 'trial_in_block', 'is_face_block', ...
+        'block_onset', 'stimonset', 'respsec', 'responsecorr', ...
+        'key_code', 'keypress_timestamp', 'isi_seconds', ...
+        'trigger_timestamp', 'accuracy', 'screenX', 'screenY', 'source_csv_path'});
 
-summary_table = table({'summary'}, day, run, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, nan, acc, allt(1), screenX, screenY, {source_csv_path}, ...
-    'VariableNames', {'record_type', 'day', 'run', 'trial_index', 'block_number', 'trial_in_block', 'is_face_block', 'block_onset', 'stimonset', 'respsec', 'responsecorr', 'isi_seconds', 'frame_index', 'timestamp', 'frame_type', 'keypress_index', 'key_code', 'accuracy', 'trigger_timestamp', 'screenX', 'screenY', 'source_csv_path'});
+files.behavioral_file = [output_base '_behavioral.csv'];
+writetable(behavioral_tbl, files.behavioral_file);
 
-block_table = add_missing_variables(block_table, trial_table);
-frame_table = add_missing_variables(frame_table, trial_table);
-keypress_table = add_missing_variables(keypress_table, trial_table);
-summary_table = add_missing_variables(summary_table, trial_table);
+% Frame log — one row per screen flip, minimal columns
+frame_tbl = table( ...
+    repmat(day, framecounter, 1), ...
+    repmat(run, framecounter, 1), ...
+    (1:framecounter)', ...
+    allt(1:framecounter), ...
+    frametype(1:framecounter), ...
+    repmat(screenX, framecounter, 1), ...
+    repmat(screenY, framecounter, 1), ...
+    'VariableNames', {'day', 'run', 'frame_index', 'timestamp', 'frame_type', 'screenX', 'screenY'});
 
-output_table = [trial_table; block_table; frame_table; keypress_table; summary_table];
-output_file = [output_base '.csv'];
-writetable(output_table, output_file);
-end
-
-function tbl = add_missing_variables(tbl, exemplar_tbl)
-exemplar_names = exemplar_tbl.Properties.VariableNames;
-for idx = 1:numel(exemplar_names)
-    name = exemplar_names{idx};
-    if ~ismember(name, tbl.Properties.VariableNames)
-        tbl.(name) = make_empty_column_like(exemplar_tbl.(name), height(tbl));
-    end
-end
-tbl = tbl(:, exemplar_names);
+files.frames_file = [output_base '_frames.csv'];
+writetable(frame_tbl, files.frames_file);
 end
 
 
@@ -563,22 +547,7 @@ else
 end
 end
 
-function empty_col = make_empty_column_like(sample_col, nRows)
-if isnumeric(sample_col)
-    empty_col = nan(nRows, 1);
-elseif islogical(sample_col)
-    empty_col = false(nRows, 1);
-elseif iscell(sample_col)
-    empty_col = repmat({''}, nRows, 1);
-elseif isstring(sample_col)
-    empty_col = repmat("", nRows, 1);
-elseif ischar(sample_col)
-    empty_col = repmat({''}, nRows, 1);
-else
-    error('Unsupported table column class for CSV export: %s', class(sample_col));
-end
-end
-function show_instructions(window, mode, responseKeys, black, white, KB)
+function show_instructions(window, windowRect, mode, responseKeys, black, white, KB)
 % Display task instructions across two screens (80 pt text), then restore
 % the main task text size (160 pt).
 left_key  = responseKeys{1}(1);   % '1!' -> '1',  '2@' -> '2'
@@ -607,8 +576,11 @@ instr1 = sprintf([...
     'find which BOTTOM image matches the TOP image.\n\n'...
     '%s'], continue_msg);
 
+% Start text at 28% from the top so the title sits mid-screen, not near the top edge.
+sy = windowRect(4) * 0.28;
+
 Screen('FillRect', window, white);
-DrawFormattedText(window, instr1, 'center', 'center', black, 45, [], [], 1.4);
+DrawFormattedText(window, instr1, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
 KbStrokeWait(KB);
 
@@ -622,7 +594,7 @@ instr2 = sprintf([...
     '%s'], left_label, right_label, ready_msg);
 
 Screen('FillRect', window, white);
-DrawFormattedText(window, instr2, 'center', 'center', black, 45, [], [], 1.4);
+DrawFormattedText(window, instr2, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
 KbStrokeWait(KB);
 
