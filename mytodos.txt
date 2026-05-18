@@ -1,4 +1,2 @@
-- upload the changed code to github
-- download it on the stim laptop
 - run it while responding to all trials
 - check the csv outputs
