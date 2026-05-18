@@ -1,2 +1,3 @@
-- run it while responding to all trials
-- check the csv outputs
+- check where to change the number of empty lines
+between the instruction lines
+- remove the shapes that are too similar
