@@ -60,7 +60,11 @@ if ~isfield(opts, 'skipSyncTests')
     opts.skipSyncTests = 2;   % 2 = skip sync test entirely (no flash error screen)
 end
 if ~isfield(opts, 'mode')
-    opts.mode = 'laptop';
+    if outside_of_mri_test
+        opts.mode = 'laptop';
+    else
+        opts.mode = 'mri';
+    end
 end
 if ~isfield(opts, 'triggerKey')
     opts.triggerKey = '5%';
