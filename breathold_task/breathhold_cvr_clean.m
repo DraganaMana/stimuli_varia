@@ -68,8 +68,10 @@ else
 end
 
 % Scanner sends a '+' character as the trigger pulse at each volume onset.
-% On a laptop keyboard, press the key that produces ''+''.
+% On a laptop keyboard, press the key that produces '+'.
 triggerKey = KbName('+');
+triggerlist = zeros(1, 256);
+triggerlist(triggerKey) = 1;
 
 % ---- Condition durations (seconds) ------------------------------------------
 % Index maps to condition number used in the block sequence below:
@@ -182,7 +184,18 @@ if outside_of_mri_test
     fprintf('TEST MODE: skipping trigger wait — starting immediately.\n');
     trigger_ts = GetSecs;
 else
-    trigger_ts = KbTriggerWait(triggerKey, KB);
+    % KbTriggerWait conflicts with active KbQueues on Linux PTB 3.0.18.
+    % Use KbQueue directly instead — same approach as the face task.
+    try; KbQueueRelease(KB); catch; end   % clear any queue left from a prior run
+    KbQueueCreate(KB, triggerlist);
+    KbQueueStart(KB);
+    pressed = 0;
+    while ~pressed
+        pause(0.005);
+        [pressed, firstpress] = KbQueueCheck(KB);
+    end
+    trigger_ts = firstpress(triggerKey);
+    KbQueueRelease(KB);
 end
 
 % ---- Save trigger timestamp --------------------------------------------------
