@@ -174,10 +174,10 @@ try
 
     % Hardcode 0-255 colors — do not use WhiteIndex/BlackIndex, which return
     % 1.0 if a previous script in the session enabled PTB normalized color mode.
-    white = 255;
+    gray  = 128;   % medium gray — Hariri-task convention
     black = 0;
 
-    [window, windowRect] = Screen('OpenWindow', whichScreen, white);
+    [window, windowRect] = Screen('OpenWindow', whichScreen, gray);
 
     % Alpha blending lets transparent shape PNG areas show the white bg.
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
@@ -187,7 +187,7 @@ try
 
     % Flip the loading screen BEFORE GetFlipInterval so the window is never
     % blank during the measurement (that blank was the mysterious flash).
-    Screen('FillRect', window, white);
+    Screen('FillRect', window, gray);
     DrawFormattedText(window, 'Loading experiment,\nplease be patient...', 'center', 'center', black);
     Screen('Flip', window);
 
@@ -267,7 +267,7 @@ try
     trialdurFrames = ceil(display_duration / ifi);
 
     %% Instructions
-    show_instructions(window, windowRect, char(mode), opts.responseKeys, black, white, KB);
+    show_instructions(window, windowRect, char(mode), opts.responseKeys, black, gray, KB);
 
     %% Task start
     if opts.waitForTrigger
@@ -333,7 +333,7 @@ try
             % 3-second block cue shown once at block start
             if tr == 1
                 for frame = 1:(cueFrames - 1)
-                    Screen('FillRect', window, white);
+                    Screen('FillRect', window, gray);
                     DrawFormattedText(window, msg, 'center', 'center', black);
                     [ts, ~] = Screen(window, 'Flip', ts + ifi * waitframes - ifi * 0.5);
 
@@ -349,7 +349,7 @@ try
 
             % Stimulus display period
             for frame = 1:(trialdurFrames - 1)
-                Screen('FillRect', window, white);
+                Screen('FillRect', window, gray);
                 Screen('DrawTexture', window, top_textures{trialcounter},   [], top_dstRects(:,   trialcounter));
                 Screen('DrawTexture', window, left_textures{trialcounter},  [], left_dstRects(:,  trialcounter));
                 Screen('DrawTexture', window, right_textures{trialcounter}, [], right_dstRects(:, trialcounter));
@@ -383,7 +383,7 @@ try
 
             % ITI fixation period
             for frame = 1:(isiTimeFrames(trialcounter) - 1)
-                Screen('FillRect', window, white);
+                Screen('FillRect', window, gray);
                 DrawFormattedText(window, '+', 'center', 'center', black);
                 [ts, ~] = Screen('Flip', window, ts + (waitframes - 0.5) * ifi);
 
@@ -400,7 +400,7 @@ try
                     consecutive_no_response = 0;
                 end
                 if consecutive_no_response >= 2
-                    Screen('FillRect', window, white);
+                    Screen('FillRect', window, gray);
                     DrawFormattedText(window, ...
                         'Please stay focused!\n\nRemember to press a button\nfor each image pair.\n\nPress any button\nto continue.', ...
                         'center', 'center', black);
@@ -544,7 +544,7 @@ else
 end
 end
 
-function show_instructions(window, windowRect, mode, responseKeys, black, white, KB)
+function show_instructions(window, windowRect, mode, responseKeys, black, gray, KB)
 % Display task instructions across two screens (80 pt text), then restore
 % the main task text size (160 pt).
 left_key  = responseKeys{1}(1);   % '1!' -> '1',  '2@' -> '2'
@@ -576,7 +576,7 @@ instr1 = sprintf([...
 % Start text at 15% from the top so the title sits mid-screen, not near the top edge.
 sy = windowRect(4) * 0.15;
 
-Screen('FillRect', window, white);
+Screen('FillRect', window, gray);
 DrawFormattedText(window, instr1, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
 KbStrokeWait(KB);
@@ -590,7 +590,7 @@ instr2 = sprintf([...
     'as possible.\n\n'...
     '%s'], left_label, right_label, ready_msg);
 
-Screen('FillRect', window, white);
+Screen('FillRect', window, gray);
 DrawFormattedText(window, instr2, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
 KbStrokeWait(KB);
