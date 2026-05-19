@@ -599,12 +599,16 @@ Screen('TextSize', window, 160);  % restore main task text size
 end
 
 function img = load_rgba(fpath)
-% Read an image file. If it is a PNG with a separate alpha channel (e.g.
-% transparent shapes), append alpha as channel 4 so PsychToolbox renders
-% transparent areas as the window background rather than black.
+% Read an image file and return an MxNx4 RGBA array.
+% For PNGs the existing alpha channel is used directly.
+% For BMPs (RADIATE faces) there is no alpha channel, so one is synthesised:
+% pixels where all three channels exceed 240 are treated as background and
+% made fully transparent; all other pixels are fully opaque.
 [rgb, ~, alpha] = imread(fpath);
 if isempty(alpha)
-    img = rgb;
+    bg_mask  = all(rgb > 240, 3);          % logical mask: near-white bg pixels
+    alpha_ch = uint8(~bg_mask) * 255;      % 0 = transparent, 255 = opaque
+    img = cat(3, rgb, alpha_ch);
 else
     img = cat(3, rgb, alpha);
 end
