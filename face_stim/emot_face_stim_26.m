@@ -29,7 +29,7 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 
 % Set to 1 when testing outside the MRI (skips trigger wait, uses all keyboards).
 % Set to 0 for real scanning sessions (waits for the '5' pulse from the MRI).
-outside_of_mri_test = 1;
+outside_of_mri_test = 0;
 
 if nargin < 1
     day = 1;
@@ -124,8 +124,8 @@ try
     end
     buttonPresses = [KbName(opts.responseKeys{1}) KbName(opts.responseKeys{2})];
 
-    keylist = zeros(1, 256);
-    keylist(buttonPresses) = 1;
+    keylist = ones(1, 256);    % accept any key from the response box
+    keylist(trigger) = 0;     % except the scanner trigger (fires at every TR)
 
     triggerlist = zeros(1, 256);
     triggerlist(trigger) = 1;
