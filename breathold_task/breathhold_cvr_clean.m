@@ -148,11 +148,11 @@ PsychDefaultSetup(2);
 screens      = Screen('Screens');
 screenNumber = max(screens);
 
-% Off-white background (slightly below maximum to reduce glare).
-white = 0.9 * WhiteIndex(screenNumber);
+% Medium gray background — matches Hariri-task convention, 0.5 in normalised [0,1] colour mode.
+gray = 0.5;
 
 % Open full-screen window.
-[window, windowRect] = PsychImaging('OpenWindow', screenNumber, white);
+[window, windowRect] = PsychImaging('OpenWindow', screenNumber, gray);
 
 % Monitor refresh interval (seconds per frame).
 ifi = Screen('GetFlipInterval', window);
@@ -200,11 +200,11 @@ try
         trigger_ts, ...
         {run_datetime}, ...
         {run_mode}, ...
-        nblocks, ...
+        nblock, ...
         double(sum(conddur(block))), ...
-        double(nblocks * sum(conddur(block)) + conddur(7)), ...
+        double(nblock * sum(conddur(block)) + conddur(7)), ...
         'VariableNames', {'trigger_timestamp', 'datetime', 'mode', ...
-                          'nblocks', 'block_duration_s', 'total_duration_s'});
+                          'nblock', 'block_duration_s', 'total_duration_s'});
     csv_path = fullfile(data_dir, sprintf('BreathHold_%s.csv', run_datetime));
     writetable(timing_tbl, csv_path);
     fprintf('Trigger timestamp saved: %s\n', csv_path);
