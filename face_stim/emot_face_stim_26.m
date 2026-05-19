@@ -172,10 +172,10 @@ try
         whichScreen = opts.whichScreen;
     end
 
-    % White background so RADIATE face images (white bg) blend seamlessly,
-    % and transparent shape PNGs render with white rather than black.
-    white = WhiteIndex(whichScreen);   % 255 on 8-bit display
-    black = BlackIndex(whichScreen);   % 0
+    % Hardcode 0-255 colors — do not use WhiteIndex/BlackIndex, which return
+    % 1.0 if a previous script in the session enabled PTB normalized color mode.
+    white = 255;
+    black = 0;
 
     [window, windowRect] = Screen('OpenWindow', whichScreen, white);
 
