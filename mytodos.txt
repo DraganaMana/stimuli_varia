@@ -1,3 +1,1 @@
-- check where to change the number of empty lines
-between the instruction lines
-- remove the shapes that are too similar
+- change the face stim paradigm to adapt it for 30 days (30 repetitions)

@@ -61,6 +61,62 @@ Default: 8 blocks  ×  60 s  +  39 s  ≈  8.65 minutes total
 
 ---
 
+## CSV output
+
+One CSV file is written per run to `breathold_task/data/`:
+
+```
+BreathHold_YYYY-MM-DD_HH-MM-SS.csv
+```
+
+It is saved **immediately after the scanner trigger is received**, before any blocks run, so timing is preserved even if the script errors mid-run.
+
+### Columns
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `trigger_timestamp` | float | PTB `GetSecs` timestamp of the `+` trigger pulse. This is **t = 0** for the run — subtract this from all derived onset times to align with the BOLD signal. In test mode (`outside_of_mri_test = 1`), it is `GetSecs` at the moment the script started (no scanner meaning). |
+| `datetime` | str | Wall-clock time string (`YYYY-MM-DD_HH-MM-SS`) — use this to match the CSV against the CapStar-100 CO2 recording file. |
+| `mode` | str | `mri` or `test` |
+| `nblocks` | int | Number of task blocks (default 8) |
+| `block_duration_s` | float | Duration of one block in seconds (default 60) |
+| `total_duration_s` | float | Total task duration including post-task recovery (default 519 s = 8 × 60 + 39) |
+
+### Deriving condition onsets from `trigger_timestamp`
+
+The task timing is fully deterministic — no jitter, no random events. All condition onsets can be computed analytically:
+
+```python
+import pandas as pd
+
+df = pd.read_csv('BreathHold_YYYY-MM-DD_HH-MM-SS.csv')
+t0 = df['trigger_timestamp'].iloc[0]   # t = 0
+
+# Onset of each phase within a block (seconds after block start):
+#   Breathe normally:  0 s
+#   Paced breathing:  21 s  (3 cycles × in/out × 3 s = 18 s)
+#   Prepare:          39 s
+#   Hold breath:      42 s
+#   Exhale:           57 s
+
+block_duration = 60   # seconds
+n_blocks       = 8
+
+hold_onsets = [(t0 + b * block_duration + 42) for b in range(n_blocks)]
+```
+
+### Aligning with the BOLD signal
+
+Subtract `trigger_timestamp` from any derived onset to get seconds from the first TR:
+
+```python
+hold_onset_rel = (t0 + 0 * block_duration + 42) - t0   # = 42.0 s
+```
+
+If the scanner trigger fires at the **first dummy volume**, add `n_dummies × TR` to all onsets when building your GLM against the trimmed (kept) timeseries. Confirm with your MRI physicist whether the trigger is sent before or after dummy volumes.
+
+---
+
 ## Running the task
 
 1. Start CO2 recording on the CapStar-100 **before** launching the script.
