@@ -67,7 +67,7 @@ if ~isfield(opts, 'mode')
     end
 end
 if ~isfield(opts, 'triggerKey')
-    opts.triggerKey = '5%';
+    opts.triggerKey = '+';
 end
 if ~isfield(opts, 'responseKeys')
     opts.responseKeys = {'1!', '2@'};
