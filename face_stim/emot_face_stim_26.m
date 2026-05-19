@@ -177,7 +177,7 @@ try
     white = WhiteIndex(whichScreen);   % 255 on 8-bit display
     black = BlackIndex(whichScreen);   % 0
 
-    [window, windowRect] = Screen(whichScreen, 'OpenWindow', white);
+    [window, windowRect] = Screen('OpenWindow', whichScreen, white);
 
     % Alpha blending lets transparent shape PNG areas show the white bg.
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
@@ -187,6 +187,7 @@ try
 
     % Flip the loading screen BEFORE GetFlipInterval so the window is never
     % blank during the measurement (that blank was the mysterious flash).
+    Screen('FillRect', window, white);
     DrawFormattedText(window, 'Loading experiment,\nplease be patient...', 'center', 'center', black);
     Screen('Flip', window);
 
