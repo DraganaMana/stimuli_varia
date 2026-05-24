@@ -9,7 +9,7 @@ Collection of MRI-compatible stimulus paradigms. Each subfolder is a self-contai
 
 | Folder | Task | Language |
 |--------|------|----------|
-| `face_stim/` | Emotion face-matching (match angry/fearful faces or shapes) | Python + MATLAB/PsychToolbox |
+| `face_stim/` | 30-day emotion face-matching (negative + happy faces or shapes, 2 databases) | Python + MATLAB/PsychToolbox |
 | `breathold_task/` | Breath-hold cerebrovascular reactivity (CVR) | MATLAB/PsychToolbox |
 | `from_stim_laptop/` | Archived scripts from the MRI stimulus laptop (read-only reference) | MATLAB/PsychToolbox |
 
@@ -18,33 +18,45 @@ Collection of MRI-compatible stimulus paradigms. Each subfolder is a self-contai
 ## face_stim/
 
 ### What it does
-Participants match a top image (face or shape) to one of two bottom choices, pressing left/right. Alternating face/shape blocks, 2 runs per session.
+30-day longitudinal paradigm. Participants match a top image (face or shape) to one of two bottom choices, pressing left/right. Alternating face/shape blocks, 2 runs per day. Run 1 = negative faces (angry/fearful), Run 2 = happy faces.
 
 ### Key files
 | File | Purpose |
 |------|---------|
-| `generate_shapes.py` | Generates PNG shape stimuli → `shapes_output/` |
-| `generate_trial_list.py` | Builds `trial_list.csv` from RADIATE data + local shapes |
-| `copy_stimuli.py` | Copies RADIATE face images → `stimuli_images/faces/`; writes `trial_list_local.csv` |
-| `trial_list.csv` | Source trial list — `base_path` absolute (machine-specific, needs RADIATE data) |
+| `generate_shapes.py` | Generates 75 PNG shape stimuli (25 categories × 3 sizes) → `shapes_output/` |
+| `generate_trial_list.py` | Builds `trial_list.csv` from RADIATE + CFD data + local shapes; enforces face repetition constraints |
+| `copy_stimuli.py` | Copies face images (RADIATE + CFD) → `stimuli_images/faces/`; writes `trial_list_local.csv` |
+| `crop_cfd.py` | Center-crops CFD JPGs (2444×1718 → 1718×1718 square) → `*_cropped.jpg`; updates `trial_list_local.csv` |
+| `trial_list.csv` | Source trial list — `base_path` absolute (machine-specific) |
 | `trial_list_local.csv` | Portable trial list — `base_path` relative to `face_stim/` |
-| `emot_face_stim_26.m` | PsychToolbox task script; accepts `opts.csv_path` to use either CSV |
+| `emot_face_stim_26.m` | PsychToolbox task script |
+| `emot_face_stim_eyetracking.m` | Eye-tracking variant (EyeLink) |
 
 ### Standalone repo workflow (run once per machine)
-1. `generate_shapes.py` → `shapes_output/` (or just use the tracked PNGs)
-2. `generate_trial_list.py` (needs RADIATE) → `trial_list.csv`
-3. `copy_stimuli.py` (needs RADIATE) → `stimuli_images/faces/` + `trial_list_local.csv`
-4. Run task with `opts.csv_path = '.../face_stim/trial_list_local.csv'`
+1. `generate_shapes.py` → `shapes_output/` (or use tracked PNGs)
+2. `generate_trial_list.py` (needs RADIATE + CFD) → `trial_list.csv`
+3. `copy_stimuli.py` (needs RADIATE + CFD) → `stimuli_images/faces/` + `trial_list_local.csv`
+4. `crop_cfd.py` → `stimuli_images/faces/CFD/**/*_cropped.jpg` + updates `trial_list_local.csv`
+5. Run task with `opts.csv_path = '.../face_stim/trial_list_local.csv'`
 
-### RADIATE face images
-- Original location: `C:\Users\draga\Documents\data\emotional_faces\RADIATE\RADIATE_BMP\RADIATE_BMP\RADIATE_450_COLOR_BMP\`
-- Local copy (repo): `face_stim/stimuli_images/faces/RADIATE_COLOR_X/IDENTITY/*.bmp`
-- 72 images: 36 identities × 2 expressions (AC = angry, FO = fearful)
+### Face databases
+- **RADIATE**: `C:\Users\draga\Documents\data\emotional_faces\RADIATE\RADIATE_BMP\RADIATE_BMP\RADIATE_450_COLOR_BMP\`
+  - Expressions: AC, AO, FC, FO (neg); HC, HE, HO (hap)
+  - Local copy: `face_stim/stimuli_images/faces/RADIATE_COLOR_X/IDENTITY/*.bmp`
+- **CFD (Chicago Face Database)**: `C:\Users\draga\Documents\data\emotional_faces\Chicago\CFD Version 3.0\Images\CFD`
+  - Expressions: A, F (neg); HC, HO (hap)
+  - Original images: 2444×1718 px (landscape); center-cropped to 1718×1718 (square) by `crop_cfd.py`
+  - Local copy: `face_stim/stimuli_images/faces/CFD/IDENTITY_DIR/*_cropped.jpg` (task uses cropped versions)
+- 1250 face images + 533 cropped JPGs in `stimuli_images/faces/`
 
 ### Task parameters
-- 1 day, 2 runs; 8 blocks/run (face/shape interleaved); 9 trials/block
-- Stimulus display: 4 s; ITIs: jittered 2/4/6 s (faces), fixed 2 s (shapes)
-- MRI mode: trigger `5%`, Current Designs 932 button box; laptop mode: keypress to start
+- 30 days, 2 runs/day; 8 blocks/run (4 face + 4 shape, interleaved); 5 trials/block = 2400 total trials
+- Face blocks: 1,3,5,7 (odd) — female at 1,5; male at 3,7; run 1 = neg, run 2 = hap
+- Shape blocks: 2,4,6,8 (even)
+- Stimulus display: 4 s; ITIs: jittered [2,2,4,6,6] s shuffled (faces), fixed 2 s (shapes)
+- MRI mode: 10 s gray screen after trigger for T1 stabilisation; trigger `5%`/`+`, Current Designs 932 button box
+- Face repetition constraint: max 2 appearances per image, min 15-day gap between appearances
+- Shape constraint: each image at most once as correct target and once as foil per day
 
 ---
 

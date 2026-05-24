@@ -1,1 +1,2 @@
-- change the face stim paradigm to adapt it for 30 days (30 repetitions)
+- run all 30 days to see if the outputs are okay
+- add a few 10 sec wait time at the beginning of the script to reach steady state

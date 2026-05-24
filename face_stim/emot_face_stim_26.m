@@ -7,18 +7,18 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 % Participant selects left/right match with button box keys.
 %
 % Required inputs:
-%   day : day number (integer, currently 1)
+%   day : day number (integer, 1–30)
 %   run : run number (integer, 1 or 2)
 %
 % Optional input (opts struct fields):
 %   .csv_path      : path to trial_list.csv
-%                    (default: trial_list.csv in same folder as this script)
+%                    (default: trial_list_local.csv in same folder as this script)
 %   .data_path     : directory where output .csv files are saved
 %                    (default: <script folder>/data/)
-%   .skipSyncTests : 1 to skip PTB sync test (default 1)
-%   .mode          : 'laptop' (default) or 'mri'
+%   .skipSyncTests : 1 to skip PTB sync test (default 2)
+%   .mode          : 'mri' (default) or 'laptop'
 %   .waitForTrigger: wait for trigger before task start (default: false for laptop, true for mri)
-%   .triggerKey    : trigger key name for KbName (default '5%')
+%   .triggerKey    : trigger key name for KbName (default '+')
 %   .responseKeys  : cell array with left/right key names (default {'1!','2@'})
 %   .keyboardName  : device name to match in GetKeyboardIndices (default: Current Designs device in mri mode)
 %   .whichScreen   : PTB screen index (default: max(Screen('Screens')))
@@ -28,7 +28,7 @@ function [acc, data] = emot_face_stim_26(day, run, opts)
 %   data : struct with saved trial timing and response info
 
 % Set to 1 when testing outside the MRI (skips trigger wait, uses all keyboards).
-% Set to 0 for real scanning sessions (waits for the '5' pulse from the MRI).
+% Set to 0 for real scanning sessions (waits for the scanner trigger, default key: '+').
 outside_of_mri_test = 0;
 
 if nargin < 1
@@ -179,7 +179,7 @@ try
 
     [window, windowRect] = Screen('OpenWindow', whichScreen, gray);
 
-    % Alpha blending lets transparent shape PNG areas show the white bg.
+    % Alpha blending lets transparent shape PNG areas show the gray bg.
     Screen('BlendFunction', window, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
 
     % Large text — legible at MRI viewing distance.
@@ -241,21 +241,21 @@ try
     end
 
     %% Timing plan
-    numTrials = 9;
-    numBlocks = 4;   % 2 face + 2 shape per run
+    numTrials = 5;
+    numBlocks = 8;   % 4 face + 4 shape per run, interleaved
     totalTrials = numTrials * numBlocks;
 
     display_duration = 4.0;
 
     % Jittered ITIs (s) for face blocks; fixed ITI for shape blocks.
-    % 9 values per block, randomised within each face block at runtime.
-    % Face blocks are at positions 1 and 3 within every run.
-    isiF = [2 2 6 6 4 4 2 4 6];
-    isiS = [2 2 2 2 2 2 2 2 2];
+    % 5 values per block, randomised within each face block at runtime.
+    % Face blocks are at odd positions (1,3,5,7); shape blocks at even (2,4,6,8).
+    isiF = [2 2 4 6 6];
+    isiS = [2 2 2 2 2];
 
     isiL = [];
     for bl = 1:numBlocks
-        if ismember(bl, [1 3])
+        if ismember(bl, [1 3 5 7])
             isiL = [isiL, isiF(randperm(numel(isiF)))]; %#ok<AGROW>
         else
             isiL = [isiL, isiS]; %#ok<AGROW>
@@ -292,6 +292,14 @@ try
         ts = GetSecs;
     end
 
+    %% Blank gray screen for MRI T1 equilibration (MRI mode only)
+    if mode == "mri"
+        EQUIL_SECS = 10;
+        Screen('FillRect', window, gray);
+        Screen('Flip', window);
+        WaitSecs('UntilTime', ts + EQUIL_SECS);
+    end
+
     %% Response queue for participant button presses
     KbQueueCreate(KB, keylist);
     KbQueueStart(KB);
@@ -314,7 +322,7 @@ try
 
     %% Main task loop
     for bl = 1:numBlocks
-        is_face_block = ismember(bl, [1 3]);
+        is_face_block = ismember(bl, [1 3 5 7]);
         if is_face_block
             msg = 'Match Faces';
         else
@@ -348,6 +356,7 @@ try
             end
 
             % Stimulus display period
+            KbQueueFlush(KB);   % discard any presses from the cue / ITI period
             for frame = 1:(trialdurFrames - 1)
                 Screen('FillRect', window, gray);
                 Screen('DrawTexture', window, top_textures{trialcounter},   [], top_dstRects(:,   trialcounter));
@@ -368,12 +377,12 @@ try
                 if pressed
                     keys = find(firstpress);
                     for j = 1:numel(keys)
-                        if keyvalcorr == keys(j)
-                            responsecorr(trialcounter) = 1;
-                        else
-                            responsecorr(trialcounter) = 0;
-                        end
                         if respsec(trialcounter) == 0
+                            if keyvalcorr == keys(j)
+                                responsecorr(trialcounter) = 1;
+                            else
+                                responsecorr(trialcounter) = 0;
+                            end
                             respsec(trialcounter)  = firstpress(keys(j)) - stimonset(trialcounter);
                             trialkey(trialcounter) = keys(j);
                         end
@@ -472,8 +481,8 @@ function files = write_run_csv(output_base, T, day, run, acc, stimonset, respsec
 
 n = height(T);
 trial_index    = (1:n)';
-block_number   = ceil(trial_index / 9);
-trial_in_block = mod(trial_index - 1, 9) + 1;
+block_number   = T.block;
+trial_in_block = T.trial;
 is_face_block  = double(ismember(block_number, [1 3 5 7]));
 
 trigger_ts = allt(1);
@@ -600,14 +609,15 @@ end
 
 function img = load_rgba(fpath)
 % Read an image file and return an MxNx4 RGBA array.
-% For PNGs the existing alpha channel is used directly.
-% For BMPs (RADIATE faces) there is no alpha channel, so one is synthesised:
-% pixels where all three channels exceed 240 are treated as background and
-% made fully transparent; all other pixels are fully opaque.
+% Files with a real alpha channel (shape PNGs) use it directly so the gray
+% screen background shows through transparent areas.
+% Face images (BMP, JPG) have no alpha channel and are loaded fully opaque,
+% preserving their white background consistently across databases.
+% (Synthesising transparency from near-white pixels does not work reliably
+% for JPEG files because lossy compression blurs edge pixels.)
 [rgb, ~, alpha] = imread(fpath);
 if isempty(alpha)
-    bg_mask  = all(rgb > 240, 3);          % logical mask: near-white bg pixels
-    alpha_ch = uint8(~bg_mask) * 255;      % 0 = transparent, 255 = opaque
+    alpha_ch = uint8(255 * ones(size(rgb, 1), size(rgb, 2), 'uint8'));
     img = cat(3, rgb, alpha_ch);
 else
     img = cat(3, rgb, alpha);

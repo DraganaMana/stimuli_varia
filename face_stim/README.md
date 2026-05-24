@@ -1,215 +1,221 @@
 # Emotional Face Matching Task — Stimuli Setup
 
-Current experimental version: `2 runs x 4 face blocks x 9 trials = 72` face-expression trials in total. Each run also includes 4 interleaved shape blocks, so the generated task structure is `1 day x 2 runs x 8 blocks/run x 9 trials/block = 144` total trials. Each trial shows 1 target image at the top and 2 choice images at the bottom; the participant presses left or right to select the matching image.
+30-day longitudinal design: **2 runs/day × 8 blocks/run × 5 trials/block = 80 trials/day** (40 face + 40 shape), **2400 total trials**. Each trial shows 1 target image at the top and 2 choice images at the bottom; the participant presses left or right to select the matching image.
 
 ---
 
 ## 1. Face Stimuli
 
-You need **angry** and **fearful** expressions only (negative valence, to maximise amygdala response).
+Both negative (angry/fearful) and positive (happy) expressions are used, drawn from two databases.
 
-### Recommended databases (free for academic research)
+### Databases
 
-| Database | Reference | Notes |
-|---|---|---|
-| **RADIATE** | Conley et al., 2018 | Racially diverse; exact database used in this task. Search "RADIATE face stimulus set Conley 2018" — available on OSF |
-| **NimStim** | Tottenham et al., 2009 | Widely used; free via MacBrain Resource Center |
-| **KDEF** | Lundqvist et al., 1998 | Free for academics from Karolinska Institute website |
-| **Chicago Face Database** | Ma et al., 2015 | High quality; free download from UChicago lab |
+| Database | Reference | Expressions used | Format |
+|---|---|---|---|
+| **RADIATE** | Conley et al., 2018 | AC, AO, FC, FO (neg); HC, HE, HO (hap) | BMP |
+| **Chicago Face Database (CFD)** | Ma et al., 2015 | A, F (neg); HC, HO (hap) | JPG |
 
-### How many images you need
+Both databases are free for academic research. RADIATE is available on OSF ("RADIATE face stimulus set Conley 2018"). CFD is available from the UChicago lab website.
 
-- The generator creates **72 face trials** across the full experiment.
-- Face trials are split evenly across expressions: **36 angry (`_AC`)** and **36 fearful (`_FO`)**.
-- `generate_trial_list.py` samples **72 top images and 72 distractor images** with no image reused anywhere in the experiment, so you need at least **72 angry files and 72 fearful files** available to support the current design.
-- Each face trial uses 1 target image, the same image again as the correct match, and a distractor from a different identity with the same expression.
+### Pool sizes (per expression, at script generation time)
 
-### Image requirements
+| Expression | RADIATE F | RADIATE M | CFD F | CFD M |
+|---|---|---|---|---|
+| Angry (AC / A) | 55 | 53 | 84 | 70 |
+| Fearful (FO / F) | 56 | 53 | 85 | 64 |
+| Happy-closed (HC) | 56 | 53 | 85 | 68 |
+| Happy-open (HO) | 56 | 53 | 83 | 71 |
 
-- Format: RADIATE face files are currently used as **BMP**; other formats can work if the trial list and loader paths match.
-- Size: **240 × 200 px** (matches the display rect in the script; PTB will scale if needed)
-- Background: neutral **mid-gray** (`#808080`) — crop to face, standardise luminance if possible
-- Grayscale or colour both work (original Hariri stimuli were grayscale)
+### Face repetition constraint
+
+- Each target face image appears **at most 2 times** across the 30 days.
+- When a face appears twice, the two appearances must be **at least 15 days apart**.
+- Roughly 35–60 faces per block type are used twice; the rest appear once.
+
+### Image sizes and background
+
+- RADIATE images are **450 × 450 px** (square, white background).
+- CFD images are **2444 × 1718 px** (landscape, ratio 1.42, white background).
+
+To make the two databases visually consistent, `crop_cfd.py` center-crops each CFD image to a square (1718 × 1718 px) and saves the result as `<stem>_cropped.jpg` alongside the original. The trial list is updated to reference the cropped versions. Both databases are then displayed with a white background on the gray screen (no synthetic transparency is applied to face images).
+
+### How many images are copied to the repo
+
+Running `copy_stimuli.py` copies **1250 unique face images** into `stimuli_images/faces/`:
+- RADIATE → `stimuli_images/faces/RADIATE_COLOR_X/IDENTITY/*.bmp`
+- CFD → `stimuli_images/faces/CFD/IDENTITY_DIR/*.jpg`
+
+Running `crop_cfd.py` then adds **533 cropped JPGs** (`*_cropped.jpg`) in the same CFD subfolders and updates `trial_list_local.csv` to use them.
 
 ---
 
 ## 2. Shape Stimuli
 
-The shape blocks are the sensorimotor control condition. You need simple **circles and ovals** arranged with the same left/right matching logic as the face trials.
+The shape blocks are the sensorimotor control condition. Generate the PNG files with:
 
-Generate them with the included script:
-
-```
-python generate_shapes.py
+```bash
+conda run -n mne1.8 python generate_shapes.py
 ```
 
-See [generate_shapes.py](generate_shapes.py) for details. The script outputs 20 PNG files with **transparent backgrounds** (RGBA) at 240 × 200 px.
+This produces **75 PNG files** (RGBA, 300 × 300 px, transparent background) in `shapes_output/`, spanning **25 categories × 3 sizes** (small / large / xxlarge):
 
-`generate_trial_list.py` reuses those shape files as needed to build **72 shape trials** across the two runs, and applies an anti-repetition constraint so identical target/foil shape pairs do not occur on consecutive trials.
+circles, ovals (wide/tall/tilt45/tilt315), squares, rectangles (wide/tall), triangles (equilateral/inverted/wide/right), rhombus, parallelogram, trapezoid, kite, pentagon, heptagon, semicircle, star, plus, arrow right, arrow up, chevron right, chevron up.
+
+### Within-day uniqueness constraint
+
+Each shape image appears at most once as the **correct target** and at most once as a **foil** within a single day. A shape may appear in both roles on the same day (once correct, once foil), giving a maximum of 2 appearances per image per day.
 
 ---
 
-## 3. Folder Structure
+## 3. Block Structure
 
-The current workflow uses one generated CSV condition file instead of the older `CB*.xlsx` counterbalancing files.
+Each run has 8 blocks, interleaving face and shape:
+
+| Block | Content | Run 1 | Run 2 |
+|---|---|---|---|
+| 1 | Female faces | Negative (angry/fearful) | Happy |
+| 2 | Shapes | — | — |
+| 3 | Male faces | Negative | Happy |
+| 4 | Shapes | — | — |
+| 5 | Female faces | Negative | Happy |
+| 6 | Shapes | — | — |
+| 7 | Male faces | Negative | Happy |
+| 8 | Shapes | — | — |
+
+**Timing per block:**
+- 3 s block cue (text on gray screen)
+- 5 trials × 4 s stimulus display
+- ITIs: face blocks jittered [2, 2, 4, 6, 6] s shuffled (mean 4.0 s); shape blocks fixed 2 s
+
+**Run start (MRI mode):** 10 s blank gray screen after the scanner trigger for T1 signal stabilisation.
+
+---
+
+## 4. Folder Structure
 
 ```
 face_stim/
-├── emot_face_stim_26.m
+├── emot_face_stim_26.m            ← main PsychToolbox task script
+├── emot_face_stim_eyetracking.m   ← eye-tracking variant
 ├── generate_shapes.py
 ├── generate_trial_list.py
-├── trial_list.csv                 ← generated by generate_trial_list.py
+├── copy_stimuli.py
+├── crop_cfd.py                    ← center-crops CFD JPGs to square; updates trial_list_local.csv
+├── trial_list.csv                 ← generated; base_path absolute (machine-specific)
+├── trial_list_local.csv           ← generated; base_path relative to face_stim/
 ├── shapes_output/                 ← generated by generate_shapes.py
-│   ├── *.png
-└── data/                          ← auto-created by emot_face_stim_26.m at runtime
+│   └── *.png  (75 files)
+├── stimuli_images/faces/          ← populated by copy_stimuli.py + crop_cfd.py
+│   ├── RADIATE_COLOR_X/IDENTITY/*.bmp
+│   └── CFD/IDENTITY_DIR/
+│       ├── *.jpg                  ← original (kept for reference)
+│       └── *_cropped.jpg          ← square-cropped; used by the task
+└── data/                          ← auto-created at runtime
 ```
-
-External input folders referenced by the generator:
-
-- `RADIATE_ROOT`: directory containing the RADIATE BMP face files
-- `SHAPES_DIR`: the local `shapes_output/` folder created by `generate_shapes.py`
 
 ---
 
-## 4. Trial List Generation
-
-Generate the trial list with:
+## 5. Setup Workflow (run once per machine)
 
 ```bash
-python generate_trial_list.py
+# 1. Generate shape PNGs (or use the tracked ones in shapes_output/)
+conda run -n mne1.8 python generate_shapes.py
+
+# 2. Generate the 30-day trial list (requires RADIATE and CFD data at their absolute paths)
+conda run -n mne1.8 python generate_trial_list.py
+
+# 3. Copy face images into the repo and write the portable CSV
+conda run -n mne1.8 python copy_stimuli.py
+
+# 4. Center-crop CFD images to square and update trial_list_local.csv
+conda run -n mne1.8 python crop_cfd.py
 ```
 
-What the script currently does:
+After step 4, point the task script at `trial_list_local.csv`:
 
-- Uses `SEED = 42` for reproducible trial generation.
-- Builds `1` day and `2` runs.
-- Builds `8` blocks per run, interleaving face and shape blocks: `face, shape, face, shape, face, shape, face, shape`.
-- Uses `9` trials per block.
-- Creates **72 face trials** total: `8` face blocks across both runs x `9` trials.
-- Splits face trials evenly into **36 angry (`_AC`)** and **36 fearful (`_FO`)** trials.
-- Samples disjoint top-image and distractor pools so each face image is used at most once in the full experiment.
-- Builds **72 shape trials** total using the PNG files in `shapes_output/`.
-- Balances correct answers across the experiment with shuffled `left` and `right` assignments.
+```matlab
+opts.csv_path = fullfile(script_dir, 'trial_list_local.csv');
+```
 
-The output file is `trial_list.csv` in the same folder as the script.
+---
+
+## 6. Trial List Format
 
 ### trial_list.csv columns
 
 | Column | Content | Example |
 |---|---|---|
-| `day` | Day index | `1` |
-| `run` | Run index | `1` or `2` |
-| `block` | Block number within run | `1` to `8` |
-| `trial` | Trial number within block | `1` to `9` |
-| `base_path` | Absolute base directory for the stimulus family | `C:\...\RADIATE_450_COLOR_BMP\` |
-| `top_correct` | Target image filename relative to `base_path` | `AF-225-013-m-ac-bmp/AF-225-013-m-ac-bmp_AC.bmp` |
-| `bottom_left` | Left choice image relative to `base_path` | `...` |
-| `bottom_right` | Right choice image relative to `base_path` | `...` |
+| `day` | Day index (1–30) | `1` |
+| `run` | Run index (1–2) | `1` |
+| `block` | Block number within run (1–8) | `3` |
+| `trial` | Trial number within block (1–5) | `2` |
+| `block_type` | `fem_neg`, `mal_neg`, `fem_hap`, `mal_hap`, or `shape` | `fem_neg` |
+| `base_path` | Absolute base directory for image paths | `C:\...\RADIATE_450_COLOR_BMP\` |
+| `top_correct` | Target image path relative to `base_path` | `RADIATE_COLOR_1/AF01/AF01_AC.bmp` |
+| `bottom_left` | Left choice image path relative to `base_path` | `...` |
+| `bottom_right` | Right choice image path relative to `base_path` | `...` |
 | `bottom_correct_match` | Side containing the correct match | `left` or `right` |
 
-**Row order = trial order.** Within each run, blocks are assigned in this order:
+`trial_list_local.csv` is identical except `base_path` is relative to the `face_stim/` folder, so the repo is portable across machines.
 
-| Block | Type | Rows |
-|---|---|---|
-| 1 | Face | 1–9 |
-| 2 | Shape | 10–18 |
-| 3 | Face | 19–27 |
-| 4 | Shape | 28–36 |
-| 5 | Face | 37–45 |
-| 6 | Shape | 46–54 |
-| 7 | Face | 55–63 |
-| 8 | Shape | 64–72 |
+### Correct answer logic
 
-**Correct answer logic:**
-- **Faces:** the correct side contains the same image as `top_correct`; the foil is a different identity with the same expression label.
-- **Shapes:** the correct side contains the same shape as the target; the foil is a different shape.
+- **Faces:** the correct side contains the same image as `top_correct`; the foil is a different identity with the same expression and database.
+- **Shapes:** the correct side contains the same shape category as the target; the foil is a different shape category.
 
 ---
 
-## 5. Running the Task
+## 7. Running the Task
 
 ```matlab
+% Day 3, run 1 — portable local paths
 opts = struct();
-opts.csv_path = fullfile(pwd, 'trial_list.csv');
-[acc, data] = emot_face_stim_26(1, 1, opts);
+opts.csv_path = fullfile(fileparts(mfilename('fullpath')), 'trial_list_local.csv');
+[acc, data] = emot_face_stim_26(3, 1, opts);
 ```
 
-Runtime output is written to the `data/` folder as one run-stamped CSV file.
+Runtime output is written to `data/` as a run-stamped CSV.
 
-- The `record_type` column identifies whether a row contains `trial`, `block`, `frame`, `keypress`, or `summary` data.
-- Trial rows contain the original trial-list columns plus response timing and accuracy fields.
-- Non-trial rows leave unrelated columns blank so all run data can live in one file.
+### opts fields
 
-### Input Device Setup (Laptop vs MRI)
+| Field | Default | Notes |
+|---|---|---|
+| `csv_path` | `trial_list_local.csv` next to script | Path to trial CSV |
+| `data_path` | `data/` next to script | Output directory |
+| `mode` | `'mri'` | `'laptop'` or `'mri'` |
+| `waitForTrigger` | `true` in MRI mode | Wait for scanner `5%` pulse |
+| `triggerKey` | `'+'` | Key name passed to `KbName` |
+| `responseKeys` | `{'1!','2@'}` | Left / right button names |
+| `keyboardName` | `'Current Designs, Inc. 932'` | HID device to listen on; `''` = all |
+| `whichScreen` | `max(Screen('Screens'))` | PTB screen index |
+| `skipSyncTests` | `2` | `0` for timing-accurate scanner runs |
 
-The task script supports both laptop testing and MRI-room runs through the `opts` struct.
-
-For stimulus laptop testing (regular keyboard):
-
-- Set `opts.mode = 'laptop'`
-- Usually keep `opts.waitForTrigger = false` (this is the default in laptop mode)
-- Leave `opts.keyboardName = ''` to accept input from all keyboards
-
-For MRI control room testing (projector + button pad):
-
-- Set `opts.mode = 'mri'`
-- Usually keep `opts.waitForTrigger = true` (this is the default in mri mode)
-- Set `opts.keyboardName` to your button-box device name (default is `Current Designs, Inc. 932`)
-- Set `opts.triggerKey` to the trigger key your scanner sends (default is `5%`)
-- Set `opts.responseKeys` to the left/right button keys your button pad sends (default is `{'1!','2@'}`)
-- If `5%` does not work for trigger at your site, try `+` as `opts.triggerKey`.
-
-Why keys look like `1!` and `2@`:
-
-- This is normal in Psychtoolbox key naming (`KbName`).
-- `1!` means the number-row 1 key (with `!` as its shifted symbol), and `2@` means the number-row 2 key.
-- Many MRI response interfaces emulate a USB keyboard/HID device, so button presses arrive as keyboard key events rather than raw bit values.
-
-Variables you may need to change:
-
-- `opts.mode`: choose `laptop` or `mri`
-- `opts.waitForTrigger`: whether the task waits for scanner trigger before starting
-- `opts.keyboardName`: which HID keyboard device to listen to
-- `opts.triggerKey`: key name used as trigger
-- `opts.responseKeys`: two key names used for left/right responses
-- `opts.whichScreen`: screen index if you need to force laptop monitor vs projector
-- `opts.skipSyncTests`: use `1` only for quick local tests; use `0` for timing-accurate scanner runs when possible
-
-How to know what values to set:
-
-1. Run one test with your current settings.
-2. Check the terminal preflight block printed by `emot_face_stim_26.m`.
-3. Confirm it shows the expected mode, keyboard device, trigger key code, and response key codes.
-4. If the requested keyboard is not found, update `opts.keyboardName` to match the exact device name shown by your system/PTB.
-5. If trigger or response buttons do not register correctly, update `opts.triggerKey` and/or `opts.responseKeys` to the key names generated by your hardware.
-
-Minimal examples:
+### Minimal examples
 
 ```matlab
-% Laptop
+% Laptop test
 opts = struct();
 opts.mode = 'laptop';
 [acc, data] = emot_face_stim_26(1, 1, opts);
 ```
 
 ```matlab
-% MRI room
+% MRI scan
 opts = struct();
 opts.mode = 'mri';
-opts.keyboardName = 'Current Designs, Inc. 932';
-opts.triggerKey = '5%';
-% If your site uses plus for scanner trigger, use: opts.triggerKey = '+';
+opts.triggerKey   = '5%';   % or '+' depending on your site
 opts.responseKeys = {'1!','2@'};
 [acc, data] = emot_face_stim_26(1, 1, opts);
 ```
 
-**Local keyboard keys** (no MRI button box needed):
+### Eye-tracking variant
 
-| Event | Key |
-|---|---|
-| Start trigger | `5` |
-| Left response | `1` |
-| Right response | `2` |
+`emot_face_stim_eyetracking.m` accepts the same `opts` struct plus:
+
+| Field | Default | Notes |
+|---|---|---|
+| `use_eyelink` | `true` | Set `false` to run without EyeLink hardware |
+| `edf_filename` | auto-generated | EDF filename on tracker host (max 8 chars) |
 
 ---
 
@@ -217,4 +223,4 @@ opts.responseKeys = {'1!','2@'};
 
 - Hariri, A. R., et al. (2002). *Science*, 297(5580), 400–403.
 - Conley, C. S., et al. (2018). *Psychiatry Research*, 270, 1059–1067. [RADIATE]
-- Tottenham, N., et al. (2009). *Journal of Behavior Therapy and Experimental Psychiatry*, 40(3), 351–362. [NimStim]
+- Ma, D. S., et al. (2015). *Behavior Research Methods*, 47(4), 1122–1135. [CFD]

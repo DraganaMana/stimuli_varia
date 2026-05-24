@@ -4,7 +4,7 @@ function [acc, data] = emot_face_stim_eyetracking(day, run, opts)
 % Set opts.use_eyelink = true to enable the eye tracker.
 %
 % Required inputs:
-%   day : day number (integer, currently 1)
+%   day : day number (integer, 1–30)
 %   run : run number (integer, 1 or 2)
 %
 % Optional input (opts struct fields):
@@ -13,9 +13,9 @@ function [acc, data] = emot_face_stim_eyetracking(day, run, opts)
 %   .data_path     : directory where output files are saved
 %                    (default: <script folder>/data/)
 %   .skipSyncTests : 1 to skip PTB sync test (default 2)
-%   .mode          : 'laptop' (default) or 'mri'
+%   .mode          : 'mri' (default) or 'laptop'
 %   .waitForTrigger: wait for trigger before task start (default: false for laptop, true for mri)
-%   .triggerKey    : trigger key name for KbName (default '5%')
+%   .triggerKey    : trigger key name for KbName (default '+')
 %   .responseKeys  : cell array with left/right key names (default {'1!','2@'})
 %   .keyboardName  : device name to match in GetKeyboardIndices
 %   .whichScreen   : PTB screen index (default: max(Screen('Screens')))
@@ -358,18 +358,19 @@ try
     end
 
     %% Timing plan
-    numTrials   = 9;
-    numBlocks   = 4;   % 2 face + 2 shape per run
+    numTrials   = 5;
+    numBlocks   = 8;   % 4 face + 4 shape per run, interleaved
     totalTrials = numTrials * numBlocks;
 
     display_duration = 4.0;
 
-    isiF = [2 2 6 6 4 4 2 4 6];
-    isiS = [2 2 2 2 2 2 2 2 2];
+    % Face blocks at odd positions (1,3,5,7); shape blocks at even (2,4,6,8).
+    isiF = [2 2 4 6 6];
+    isiS = [2 2 2 2 2];
 
     isiL = [];
     for bl = 1:numBlocks
-        if ismember(bl, [1 3])
+        if ismember(bl, [1 3 5 7])
             isiL = [isiL, isiF(randperm(numel(isiF)))]; %#ok<AGROW>
         else
             isiL = [isiL, isiS]; %#ok<AGROW>
@@ -406,6 +407,14 @@ try
         ts = GetSecs;
     end
 
+    %% Blank gray screen for MRI T1 equilibration (MRI mode only)
+    if mode == "mri"
+        EQUIL_SECS = 10;
+        Screen('FillRect', window, gray);
+        Screen('Flip', window);
+        WaitSecs('UntilTime', ts + EQUIL_SECS);
+    end
+
     %% Response queue for participant button presses
     KbQueueCreate(KB, keylist);
     KbQueueStart(KB);
@@ -428,7 +437,7 @@ try
 
     %% Main task loop
     for bl = 1:numBlocks
-        is_face_block = ismember(bl, [1 3]);
+        is_face_block = ismember(bl, [1 3 5 7]);
         if is_face_block
             msg        = 'Match Faces';
             block_type = 'face';
@@ -475,6 +484,7 @@ try
             end
 
             % Stimulus display period
+            KbQueueFlush(KB);   % discard any presses from the cue / ITI period
             for frame = 1:(trialdurFrames - 1)
                 Screen('FillRect', window, gray);
                 Screen('DrawTexture', window, top_textures{trialcounter},   [], top_dstRects(:,   trialcounter));
@@ -500,12 +510,12 @@ try
                 if pressed
                     keys = find(firstpress);
                     for j = 1:numel(keys)
-                        if keyvalcorr == keys(j)
-                            responsecorr(trialcounter) = 1;
-                        else
-                            responsecorr(trialcounter) = 0;
-                        end
                         if respsec(trialcounter) == 0
+                            if keyvalcorr == keys(j)
+                                responsecorr(trialcounter) = 1;
+                            else
+                                responsecorr(trialcounter) = 0;
+                            end
                             respsec(trialcounter)  = firstpress(keys(j)) - stimonset(trialcounter);
                             trialkey(trialcounter) = keys(j);
                         end
@@ -671,8 +681,8 @@ function files = write_run_csv(output_base, T, day, run, acc, stimonset, respsec
 
 n              = height(T);
 trial_index    = (1:n)';
-block_number   = ceil(trial_index / 9);
-trial_in_block = mod(trial_index - 1, 9) + 1;
+block_number   = T.block;
+trial_in_block = T.trial;
 is_face_block  = double(ismember(block_number, [1 3 5 7]));
 
 trigger_ts = allt(1);
@@ -788,10 +798,13 @@ end
 % -------------------------------------------------------------------------
 
 function img = load_rgba(fpath)
+% Files with a real alpha channel (shape PNGs) use it directly.
+% Face images (BMP, JPG) are loaded fully opaque — white background is
+% preserved consistently across databases (JPEG compression makes
+% near-white threshold masking unreliable for CFD images).
 [rgb, ~, alpha] = imread(fpath);
 if isempty(alpha)
-    bg_mask  = all(rgb > 240, 3);
-    alpha_ch = uint8(~bg_mask) * 255;
+    alpha_ch = uint8(255 * ones(size(rgb, 1), size(rgb, 2), 'uint8'));
     img = cat(3, rgb, alpha_ch);
 else
     img = cat(3, rgb, alpha);

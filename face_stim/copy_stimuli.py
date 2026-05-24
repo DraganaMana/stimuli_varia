@@ -1,10 +1,14 @@
 """
 copy_stimuli.py — bundle face images into the repo for standalone use.
 
-Reads trial_list.csv (which references external RADIATE image files),
-copies every unique face image into stimuli_images/faces/ (preserving the
-RADIATE subfolder structure), then writes trial_list_local.csv with paths
+Reads trial_list.csv (which references external RADIATE and CFD image files),
+copies every unique face image into stimuli_images/faces/ preserving each
+database's subfolder structure, then writes trial_list_local.csv with paths
 relative to this script's directory so the repo is portable across machines.
+
+Database layouts after copying:
+  stimuli_images/faces/RADIATE_COLOR_X/IDENTITY/file.bmp   (RADIATE)
+  stimuli_images/faces/CFD/IDENTITY_DIR/file.jpg            (CFD)
 
 Shape images are already generated locally by generate_shapes.py and
 tracked in shapes_output/ — no copying needed for those.
@@ -12,7 +16,7 @@ tracked in shapes_output/ — no copying needed for those.
 Usage:
     python copy_stimuli.py
 
-After running this once (requires access to the original RADIATE data),
+After running this once (requires access to RADIATE and CFD data),
 point the task script to trial_list_local.csv via opts.csv_path.
 """
 
@@ -32,9 +36,22 @@ SHAPES_BASE = "shapes_output"
 
 PATH_COLS = ["top_correct", "bottom_left", "bottom_right"]
 
+# Substrings used to identify which database a face row belongs to.
+RADIATE_TAG = "RADIATE"
+CFD_TAG     = "CFD"
 
-def is_face_row(row: dict) -> bool:
-    return "RADIATE" in row["base_path"]
+# Destination subdirectory prefix under IMG_DIR for CFD images.
+CFD_SUBDIR  = "CFD"
+
+
+def row_db(row: dict) -> str:
+    """Return 'radiate', 'cfd', or 'shape' for a trial row."""
+    bp = row["base_path"]
+    if RADIATE_TAG in bp:
+        return "radiate"
+    if CFD_TAG in bp:
+        return "cfd"
+    return "shape"
 
 
 def main():
@@ -51,41 +68,63 @@ def main():
 
     fieldnames = list(rows[0].keys())
 
-    # Determine the RADIATE root from the first face row in the CSV.
-    face_rows = [r for r in rows if is_face_row(r)]
-    if not face_rows:
-        raise RuntimeError("No face (RADIATE) rows found in trial_list.csv.")
+    # Determine database roots from the first matching row in the CSV.
+    def _first_base(tag):
+        for r in rows:
+            if tag in r["base_path"]:
+                return Path(r["base_path"].rstrip("\\/"))
+        return None
 
-    radiate_root = Path(face_rows[0]["base_path"].rstrip("\\/"))
+    radiate_root = _first_base(RADIATE_TAG)
+    cfd_root     = _first_base(CFD_TAG)
 
-    print(f"Source RADIATE root : {radiate_root}")
-    print(f"Destination         : {IMG_DIR}")
-    print()
+    if radiate_root:
+        print(f"Source RADIATE root : {radiate_root}")
+    if cfd_root:
+        print(f"Source CFD root     : {cfd_root}")
+    print(f"Destination         : {IMG_DIR}\n")
 
-    # Collect every unique relative face image path across all three columns.
-    unique_rel_paths = set()
-    for row in face_rows:
+    # Collect unique (source_path, dest_path) pairs to copy.
+    copy_pairs: list[tuple[Path, Path]] = []
+
+    for row in rows:
+        db = row_db(row)
+        if db == "shape":
+            continue
+
+        bp = Path(row["base_path"].rstrip("\\/"))
+
         for col in PATH_COLS:
-            unique_rel_paths.add(row[col])
+            rel_path = Path(row[col].replace("\\", "/"))
+            src      = bp / rel_path
 
-    print(f"Unique face images referenced: {len(unique_rel_paths)}")
+            if db == "radiate":
+                # Preserve RADIATE_COLOR_X/IDENTITY/ hierarchy.
+                dst = IMG_DIR / rel_path
+            else:
+                # Place CFD images under stimuli_images/faces/CFD/IDENTITY/
+                dst = IMG_DIR / CFD_SUBDIR / rel_path
 
-    # Copy images, preserving the RADIATE_COLOR_X/IDENTITY/ subfolder structure.
-    copied  = 0
-    skipped = 0
-    missing = 0
-    for rel_path in sorted(unique_rel_paths):
-        # Normalise separators so Path handles Windows backslashes from the CSV.
-        rel_path_norm = Path(rel_path.replace("\\", "/"))
-        src = radiate_root / rel_path_norm
-        dst = IMG_DIR / rel_path_norm
+            copy_pairs.append((src, dst))
+
+    # Deduplicate while keeping order.
+    seen       = set()
+    unique_pairs = []
+    for pair in copy_pairs:
+        key = str(pair[0])
+        if key not in seen:
+            seen.add(key)
+            unique_pairs.append(pair)
+
+    print(f"Unique face images referenced: {len(unique_pairs)}")
+
+    copied = skipped = missing = 0
+    for src, dst in unique_pairs:
         dst.parent.mkdir(parents=True, exist_ok=True)
-
         if not src.exists():
             print(f"  [MISSING] {src}")
             missing += 1
             continue
-
         if dst.exists():
             skipped += 1
         else:
@@ -95,14 +134,24 @@ def main():
     print(f"  Copied          : {copied}")
     print(f"  Already present : {skipped}")
     if missing:
-        print(f"  Missing on disk : {missing}  <-- check RADIATE path")
+        print(f"  Missing on disk : {missing}  <-- check source data paths")
     print()
 
     # Write trial_list_local.csv with relative base_path values.
     out_rows = []
     for row in rows:
         new_row = dict(row)
-        new_row["base_path"] = FACES_BASE if is_face_row(row) else SHAPES_BASE
+        db = row_db(row)
+        if db == "shape":
+            new_row["base_path"] = SHAPES_BASE
+        else:
+            new_row["base_path"] = FACES_BASE
+            if db == "cfd":
+                # Prefix relative image paths with CFD/ to match the
+                # stimuli_images/faces/CFD/ destination hierarchy.
+                for col in PATH_COLS:
+                    rel = new_row[col].replace("\\", "/")
+                    new_row[col] = CFD_SUBDIR + "/" + rel
         out_rows.append(new_row)
 
     with open(DST_CSV, "w", newline="", encoding="utf-8") as f:
@@ -112,12 +161,14 @@ def main():
 
     print(f"Written : {DST_CSV}")
 
-    # Summary of directory structure created.
-    subdirs = sorted({(IMG_DIR / Path(r.replace("\\", "/"))).parent for r in unique_rel_paths if not Path(r.replace("\\", "/")).parent == Path(".")})
-    color_groups = sorted({p.parent.name for p in subdirs})
-    print(f"\nDirectory structure under stimuli_images/faces/:")
-    print(f"  Colour groups : {color_groups}")
-    print(f"  Identity dirs : {len(subdirs)}")
+    # Summary
+    radiate_rows = [r for r in rows if row_db(r) == "radiate"]
+    cfd_rows     = [r for r in rows if row_db(r) == "cfd"]
+    shape_rows   = [r for r in rows if row_db(r) == "shape"]
+    print(f"\nTrial counts in trial_list_local.csv:")
+    print(f"  RADIATE face trials : {len(radiate_rows)}")
+    print(f"  CFD face trials     : {len(cfd_rows)}")
+    print(f"  Shape trials        : {len(shape_rows)}")
     print("Done.")
 
 
