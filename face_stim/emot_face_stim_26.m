@@ -585,7 +585,7 @@ sy = windowRect(4) * 0.15;
 Screen('FillRect', window, gray);
 DrawFormattedText(window, instr1, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
-KbStrokeWait(KB);
+kb_wait_any(KB);
 
 % --- Screen 2: response mapping ---
 instr2 = sprintf([...
@@ -599,9 +599,24 @@ instr2 = sprintf([...
 Screen('FillRect', window, gray);
 DrawFormattedText(window, instr2, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
-KbStrokeWait(KB);
+kb_wait_any(KB);
 
 Screen('TextSize', window, 160);  % restore main task text size
+end
+
+function kb_wait_any(KB)
+% Wait for any keypress using KbQueue — avoids KbStrokeWait device-index
+% issues on Linux with specific HID device indices.
+any_key_list = ones(1, 256);
+KbQueueCreate(KB, any_key_list);
+KbQueueStart(KB);
+KbQueueFlush(KB);
+done = false;
+while ~done
+    pause(0.005);
+    [done, ~] = KbQueueCheck(KB);
+end
+KbQueueRelease(KB);
 end
 
 function img = load_rgba(fpath)
