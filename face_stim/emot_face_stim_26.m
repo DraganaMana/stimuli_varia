@@ -411,7 +411,12 @@ try
                         'Please stay focused!\n\nRemember to press a button\nfor each image pair.\n\nPress any button\nto continue.', ...
                         'center', 'center', black);
                     Screen('Flip', window);
-                    KbStrokeWait(KB);
+                    KbQueueFlush(KB);
+                    alert_pressed = false;
+                    while ~alert_pressed
+                        pause(0.005);
+                        [alert_pressed, ~] = KbQueueCheck(KB);
+                    end
                     KbQueueFlush(KB);   % discard the dismissal key press
                     consecutive_no_response = 0;
                 end
@@ -585,7 +590,7 @@ sy = windowRect(4) * 0.15;
 Screen('FillRect', window, gray);
 DrawFormattedText(window, instr1, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
-kb_wait_any(KB);
+KbStrokeWait();   % no device arg = any keyboard; avoids Linux device-index issues
 
 % --- Screen 2: response mapping ---
 instr2 = sprintf([...
@@ -599,24 +604,9 @@ instr2 = sprintf([...
 Screen('FillRect', window, gray);
 DrawFormattedText(window, instr2, 'center', sy, black, 45, [], [], 1.4);
 Screen('Flip', window);
-kb_wait_any(KB);
+KbStrokeWait();   % no device arg = any keyboard
 
 Screen('TextSize', window, 160);  % restore main task text size
-end
-
-function kb_wait_any(KB)
-% Wait for any keypress using KbQueue — avoids KbStrokeWait device-index
-% issues on Linux with specific HID device indices.
-any_key_list = ones(1, 256);
-KbQueueCreate(KB, any_key_list);
-KbQueueStart(KB);
-KbQueueFlush(KB);
-done = false;
-while ~done
-    pause(0.005);
-    [done, ~] = KbQueueCheck(KB);
-end
-KbQueueRelease(KB);
 end
 
 function img = load_rgba(fpath)
