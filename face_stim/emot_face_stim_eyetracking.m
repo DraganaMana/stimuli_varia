@@ -381,9 +381,6 @@ try
     cueFrames      = ceil(3 / ifi);
     trialdurFrames = ceil(display_duration / ifi);
 
-    %% Instructions
-    show_instructions(window, windowRect, char(mode), opts.responseKeys, black, gray, KB);
-
     %% Task start
     if opts.waitForTrigger
         DrawFormattedText(window, 'Get Ready!\n\nWaiting for\nscanner trigger...', 'center', 'center', black);
@@ -740,56 +737,6 @@ if ~isempty(regexp(base_path, '^([A-Za-z]:[/\\]|/)', 'once'))
 else
     p = fullfile(script_dir, base_path, relative_path);
 end
-end
-
-% -------------------------------------------------------------------------
-
-function show_instructions(window, windowRect, mode, responseKeys, black, gray, KB)
-left_key  = responseKeys{1}(1);
-right_key = responseKeys{2}(1);
-
-if strcmp(mode, 'mri')
-    left_label   = 'INDEX finger';
-    right_label  = 'MIDDLE finger';
-    continue_msg = 'Press any button to continue.';
-    ready_msg    = 'Press any button when ready.';
-else
-    left_label   = sprintf('key  %s', left_key);
-    right_label  = sprintf('key  %s', right_key);
-    continue_msg = 'Press any key to continue.';
-    ready_msg    = 'Press any key when ready.';
-end
-
-Screen('TextSize', window, 80);
-sy = windowRect(4) * 0.15;
-
-instr1 = sprintf([...
-    'Image Matching Task\n\n'...
-    'On each trial you will see three images:\n'...
-    'one at the TOP  and  two at the BOTTOM.\n\n'...
-    'Your task:\n'...
-    'find which BOTTOM image matches the TOP image.\n'...
-    '%s'], continue_msg);
-
-Screen('FillRect', window, gray);
-DrawFormattedText(window, instr1, 'center', sy, black, 45, [], [], 1.4);
-Screen('Flip', window);
-KbStrokeWait(KB);
-
-instr2 = sprintf([...
-    'How to respond:\n\n'...
-    'LEFT image matches   -->   press %s\n'...
-    'RIGHT image matches  -->   press %s\n\n'...
-    'Respond as QUICKLY and ACCURATELY\n'...
-    'as possible.\n\n'...
-    '%s'], left_label, right_label, ready_msg);
-
-Screen('FillRect', window, gray);
-DrawFormattedText(window, instr2, 'center', sy, black, 45, [], [], 1.4);
-Screen('Flip', window);
-KbStrokeWait(KB);
-
-Screen('TextSize', window, 160);
 end
 
 % -------------------------------------------------------------------------
