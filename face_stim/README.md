@@ -86,8 +86,9 @@ Each run has 8 blocks, interleaving face and shape:
 - 3 s block cue (text on gray screen)
 - 5 trials × 4 s stimulus display
 - ITIs: face blocks jittered [2, 2, 4, 6, 6] s shuffled (mean 4.0 s); shape blocks fixed 2 s
+- No fixation cross during stimulus display — participants scan all three images freely; fixation cross shown during ITI only
 
-**Run start (MRI mode):** 10 s blank gray screen after the scanner trigger for T1 signal stabilisation.
+**Run start:** 10 s blank gray screen after the scanner trigger (pre-task baseline). The scanner's dummy volumes bring magnetisation to steady state *before* the trigger fires; the 10 s wait provides a resting baseline at the start of the acquired volumes for use as a GLM reference.
 
 ---
 

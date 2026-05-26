@@ -53,8 +53,8 @@ Collection of MRI-compatible stimulus paradigms. Each subfolder is a self-contai
 - 30 days, 2 runs/day; 8 blocks/run (4 face + 4 shape, interleaved); 5 trials/block = 2400 total trials
 - Face blocks: 1,3,5,7 (odd) — female at 1,5; male at 3,7; run 1 = neg, run 2 = hap
 - Shape blocks: 2,4,6,8 (even)
-- Stimulus display: 4 s; ITIs: jittered [2,2,4,6,6] s shuffled (faces), fixed 2 s (shapes)
-- MRI mode: 10 s gray screen after trigger for T1 stabilisation; trigger `5%`/`+`, Current Designs 932 button box
+- Stimulus display: 4 s; no fixation cross during stimulus (participants scan images freely); ITIs: jittered [2,2,4,6,6] s shuffled (faces), fixed 2 s (shapes); fixation cross shown during ITI only
+- 10 s blank gray screen after trigger (pre-task baseline; runs in both laptop and MRI mode); dummy volumes reach steady state *before* the trigger fires, so this is a resting baseline for the GLM — not for steady state. Trigger `5%`/`+`, Current Designs 932 button box
 - Face repetition constraint: max 2 appearances per image, min 15-day gap between appearances
 - Shape constraint: each image at most once as correct target and once as foil per day
 

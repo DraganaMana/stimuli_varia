@@ -1,2 +1,2 @@
 - run all 30 days to see if the outputs are okay
-- add a few 10 sec wait time at the beginning of the script to reach steady state
+- run one run with the skip sync tests 0, and with the screen refresh rate at 60 Hz

@@ -292,13 +292,11 @@ try
         ts = GetSecs;
     end
 
-    %% Blank gray screen for MRI T1 equilibration (MRI mode only)
-    if mode == "mri"
-        EQUIL_SECS = 10;
-        Screen('FillRect', window, gray);
-        Screen('Flip', window);
-        WaitSecs('UntilTime', ts + EQUIL_SECS);
-    end
+    %% Blank gray screen — pre-task baseline (dummy volumes reach steady state before trigger fires)
+    EQUIL_SECS = 10;
+    Screen('FillRect', window, gray);
+    Screen('Flip', window);
+    WaitSecs('UntilTime', ts + EQUIL_SECS);
 
     %% Response queue for participant button presses
     KbQueueCreate(KB, keylist);
@@ -362,7 +360,6 @@ try
                 Screen('DrawTexture', window, top_textures{trialcounter},   [], top_dstRects(:,   trialcounter));
                 Screen('DrawTexture', window, left_textures{trialcounter},  [], left_dstRects(:,  trialcounter));
                 Screen('DrawTexture', window, right_textures{trialcounter}, [], right_dstRects(:, trialcounter));
-                DrawFormattedText(window, '+', 'center', 'center', black);
                 [ts, ~] = Screen(window, 'Flip', ts + ifi * waitframes - ifi * 0.5);
 
                 framecounter = framecounter + 1;
