@@ -560,7 +560,12 @@ try
                         'Please stay focused!\n\nRemember to press a button\nfor each image pair.\n\nPress any button\nto continue.', ...
                         'center', 'center', black);
                     Screen('Flip', window);
-                    KbStrokeWait(KB);
+                    KbQueueFlush(KB);
+                    alert_pressed = false;
+                    while ~alert_pressed
+                        pause(0.005);
+                        [alert_pressed, ~] = KbQueueCheck(KB);
+                    end
                     KbQueueFlush(KB);
                     consecutive_no_response = 0;
                 end
