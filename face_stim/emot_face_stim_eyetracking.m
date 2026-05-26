@@ -357,6 +357,21 @@ try
         end
     end
 
+    %% Re-query keyboard device after EyeLink init
+    % EyelinkInit / EyelinkDoTrackerSetup can add virtual HID devices, shifting
+    % the index that GetKeyboardIndices returns. Re-query here so KB points to
+    % the correct physical device for the trigger and response queues.
+    if opts.use_eyelink && ~isempty(opts.keyboardName)
+        [kbd_idx2, kbd_names2] = GetKeyboardIndices;
+        KBmatch2 = find(strcmp(kbd_names2, opts.keyboardName), 1, 'first');
+        if ~isempty(KBmatch2)
+            KB = kbd_idx2(KBmatch2);
+            fprintf('Keyboard re-queried after EyeLink init: %s (index %d)\n', kbd_names2{KBmatch2}, KB);
+        else
+            fprintf('Warning: keyboard "%s" not found after EyeLink init — keeping KB=%d\n', opts.keyboardName, KB);
+        end
+    end
+
     %% Timing plan
     numTrials   = 5;
     numBlocks   = 8;   % 4 face + 4 shape per run, interleaved
